@@ -23,9 +23,9 @@ Click **Design Studio** to open the design workflow:
 | Tab | What it does |
 |---|---|
 | 1 Controller | Enter a controller four ways: **PID gains** for the built-in cascade; **LQR-I** by choosing Q and R (K is solved in the browser) or typing K; **your own JavaScript** (`init()` and `step()`, with templates and a code check); or a **block diagram** built by drag and drop (gains, sums, integrators, derivatives, saturations and more). |
-| 2 Test | Pick a standard test (take-off, 90° travel step, ramp tracking, disturbance rejection, verification sequence) or define your own reference steps and ramps, disturbance torques, initial elevation, plant set and hardware effects. |
+| 2 Test | Pick a standard test (take-off, 90° travel step, ramp tracking, disturbance rejection, verification sequence, two fault tests) or define your own reference steps and ramps, disturbance torques, **faults** (rotor thrust loss, travel friction, encoder bias or stuck encoder; abrupt or gradual), initial conditions and hardware effects. |
 | 3 Specifications | Pass/fail limits on overshoot, settling time, steady-state error, disturbance deviation, motor voltage and stop contact. Instructors can export a spec sheet and share it with the class. |
-| 4 Results | Every run with PASS/FAIL, overlaid time histories, the spec check, per-event metrics, CSV/JSON export, and "Load design" to go back to an earlier version. |
+| 4 Results | Every run with PASS/FAIL, overlaid time histories, the spec check, per-event metrics, CSV/JSON export, "Load design" to go back to an earlier version, and a **Health monitor** panel: fault detection, isolation, estimated fault size and remaining-useful-life prediction. |
 | 5 Linear analysis | Closed-loop poles (s-plane and table with ωn and ζ), phase and gain margins of each loop, and Bode plots. Works for **any** controller, including your own code and diagrams. |
 | 6 AI tutor | Optional. Ask about your latest run; the tutor can run the simulator to test an idea before suggesting it. See below. |
 
@@ -49,6 +49,9 @@ Click **Design Studio** to open the design workflow:
 * Two parameter sets: Quanser nominal values and an identified rig.
 * Fixed-step fourth-order Runge-Kutta at 1 kHz with zero-order-hold control, independent of the screen's frame rate, so results do not depend on the computer.
 * The physics and design tools were verified against independent Python references (integration accuracy, LQR gains, poles, margins and metrics); see the paper below.
+
+## Fault diagnosis and prognosis
+A health monitor runs in every test. It knows only the nominal model, the commanded voltages and the measured angles and rates, and estimates the torque on each axis that the model cannot explain (a generalized-momentum observer). From it the lab reports when a fault is detected, which rotor (or friction) it is and how large, and, for gradual thrust loss, the predicted remaining useful life. A good controller can hide a fault in the tracking error; the residual shows it. In Fly in 3-D the faulty rotor's guard ring turns red.
 
 ## AI tutor (optional)
 * Uses the student's **own free Groq API key** (get one at https://console.groq.com/keys). The key is kept only for the session unless "Remember" is ticked.

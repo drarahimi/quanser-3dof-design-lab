@@ -455,7 +455,8 @@
     // =========================================================== scenarios
     /* scenario = { name, T, theta0 (deg), preset: 'nominal'|'identified', hw: bool,
                     refs: [{ t, theta (deg), psi (deg), ramp (s, 0 = step) }],
-                    dists: [{ t, dur, axis: 'theta'|'phi'|'psi', tau (N m) }] } */
+                    dists: [{ t, dur, axis: 'theta'|'phi'|'psi', tau (N m) }],
+                    faults: [see Sim3DOF.makeFaults] } */
     function scenarioFns(sc) {
         const refs = sc.refs.slice().sort((a, b) => a.t - b.t);
         const ref = (t) => {
@@ -492,7 +493,13 @@
             refs: [{ t: 0, theta: 0, psi: 0 }, { t: 2, theta: 5, psi: 0, ramp: 3 }, { t: 8, theta: 5, psi: 120, ramp: 25 }], dists: [] },
         disturbance: { name: 'Disturbance rejection (elevation and travel)', T: 40, theta0: 0, preset: 'nominal', hw: false,
             refs: [{ t: 0, theta: 5, psi: 0 }],
-            dists: [{ t: 10, dur: 0.5, axis: 'theta', tau: -0.3 }, { t: 25, dur: 0.5, axis: 'psi', tau: 0.1 }] }
+            dists: [{ t: 10, dur: 0.5, axis: 'theta', tau: -0.3 }, { t: 25, dur: 0.5, axis: 'psi', tau: 0.1 }] },
+        rotor_fault: { name: 'Front rotor fault (30 %, abrupt)', T: 50, theta0: 0, preset: 'nominal', hw: false,
+            refs: [{ t: 0, theta: 5, psi: 0 }, { t: 10, theta: 5, psi: 20 }, { t: 35, theta: 5, psi: 0 }], dists: [],
+            faults: [{ type: 'rotor', target: 'front', t: 25, size: 0.3, ramp: 0 }] },
+        degradation: { name: 'Gradual thrust loss (accelerated ageing)', T: 120, theta0: 0, preset: 'nominal', hw: false,
+            refs: [{ t: 0, theta: 5, psi: 0 }, { t: 20, theta: 5, psi: 20 }, { t: 50, theta: 5, psi: 0 }, { t: 80, theta: 5, psi: 20 }], dists: [],
+            faults: [{ type: 'rotor', target: 'both', t: 10, size: 0.5, ramp: 100 }] }
     };
 
     // =========================================================== running and checking
@@ -512,10 +519,129 @@
         };
         const x0 = [(sc.theta0 ?? 0) * DEG, 0, 0, 0, 0, 0];
         const t0 = (typeof performance !== 'undefined' ? performance : Date).now();
-        const log = S.simulate({ P, T: sc.T, h: 1e-3, x0, controller: safe, ref, dist, hw, logEvery: opts.logEvery || 10 });
+        const monitor = opts.monitor === false ? null : makeHealthMonitor(sc, opts.healthCfg);
+        const log = S.simulate({ P, T: sc.T, h: 1e-3, x0, controller: safe, ref, dist, hw, faults: sc.faults, monitor, logEvery: opts.logEvery || 10 });
         const wall = (typeof performance !== 'undefined' ? performance : Date).now() - t0;
-        return { scenario: JSON.parse(JSON.stringify(sc)), controllerName: controller.name, kind: controller.kind,
-                 t: log.t, x: log.x, V: log.V, ref: log.ref, error, tFail, wallMs: wall, P };
+        const run = { scenario: JSON.parse(JSON.stringify(sc)), controllerName: controller.name, kind: controller.kind,
+                      t: log.t, x: log.x, V: log.V, ref: log.ref, error, tFail, wallMs: wall, P };
+        if (log.y) Object.assign(run, { y: log.y, eta: log.eta, r: log.r, s: log.s, mlive: log.mlive, g: log.g, alarm: log.alarm });
+        return run;
+    }
+
+    // =========================================================== health monitoring (diagnosis and prognosis)
+    const HEALTH_DEFAULTS = { thrScale: 1, dwell: 0.25, KO: 5, KOhw: 1, tauS: 0.1, tauShw: 0.3, eolEta: 0.6, rulWindow: 20 };
+    // The monitor always uses the NOMINAL model (it does not know which plant set is simulated),
+    // with the actuator lag it assumes when hardware effects are on.
+    function makeHealthMonitor(sc, cfg = {}) {
+        const c = Object.assign({}, HEALTH_DEFAULTS, cfg);
+        const hw = !!(sc && sc.hw);
+        // with encoder quantisation and filtered rates, a slower observer keeps the healthy residual below threshold
+        return S.makeMonitor(S.NOMINAL, { KO: hw ? c.KOhw : c.KO, tauS: hw ? c.tauShw : c.tauS, dwell: c.dwell, thr: [0.02, 0.005, 0.01].map(v => v * c.thrScale * (hw ? 1.5 : 1)),
+                                          motorTau: hw ? 0.05 : 0, rateFilter: hw ? 50 : 0 });
+    }
+
+    /* Post-processing of a run's monitor log:
+       detection (first alarm), isolation (least squares of the filtered residual torques on the
+       fault signatures of each rotor and of travel friction), size estimates, a running thrust-health
+       estimate eta_hat(t) and a remaining-useful-life prediction from its trend. */
+    function healthAnalysis(run, cfg = {}) {
+        if (!run.r || !run.t.length) return null;
+        const c = Object.assign({}, HEALTH_DEFAULTS, cfg);
+        const t = run.t, n = t.length, dt = n > 1 ? t[1] - t[0] : 0.01, KO = run.scenario.hw ? c.KOhw : c.KO;
+        const faults = (run.scenario.faults || []).filter(f => f && f.type);
+        const tFault = faults.length ? Math.min(...faults.map(f => f.t)) : null;
+        // regressors filtered with the observer dynamics so that they line up with r
+        const a = Math.exp(-KO * dt);
+        const G = []; let gf = null;
+        for (let k = 0; k < n; k++) {
+            const g = run.g[k];
+            if (!run.mlive[k] || !g) { gf = null; G.push(null); continue; }
+            const flat = [g[0][0], g[0][1], g[1][0], g[1][1], g[2][0], g[2][1], run.y[k][5]];
+            if (!gf) gf = flat.map(() => 0);
+            gf = gf.map((v, i) => a * v + (1 - a) * flat[i]);
+            G.push(gf.slice());
+        }
+        // least squares over a window: r = [g_th; g_ph; g_ps] * [df, db] + [0; 0; -psidot] * dD
+        function fitWindow(k0, k1) {
+            const AtA = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], Atb = [0, 0, 0]; let rr = 0, m = 0;
+            const sc = [1 / 0.02, 1 / 0.005, 1 / 0.01];   // weight axes by their nominal threshold
+            for (let k = k0; k <= k1; k++) {
+                const g = G[k]; if (!g) continue;
+                const rows = [[g[0], g[1], 0], [g[2], g[3], 0], [g[4], g[5], -g[6]]];
+                for (let i = 0; i < 3; i++) {
+                    const w = sc[i], row = rows[i].map(v => v * w), b = run.r[k][i] * w;
+                    for (let p = 0; p < 3; p++) { Atb[p] += row[p] * b; for (let q = 0; q < 3; q++) AtA[p][q] += row[p] * row[q]; }
+                    rr += b * b; m++;
+                }
+            }
+            if (m < 30) return null;
+            for (let p = 0; p < 3; p++) AtA[p][p] += 1e-9;
+            const th = solve(AtA, Atb.map(v => [v])).map(v => v[0]);
+            let res = 0;
+            for (let k = k0; k <= k1; k++) {
+                const g = G[k]; if (!g) continue;
+                const rows = [[g[0], g[1], 0], [g[2], g[3], 0], [g[4], g[5], -g[6]]];
+                for (let i = 0; i < 3; i++) { const e = (run.r[k][i] - rows[i].reduce((s2, v, q) => s2 + v * th[q], 0)) * sc[i]; res += e * e; }
+            }
+            return { dF: th[0], dB: th[1], dD: th[2], fit: rr > 0 ? 1 - res / rr : 1 };
+        }
+        const alarm = run.alarm ?? null;
+        const out = { tFault, alarm, detected: alarm !== null, falseAlarm: alarm !== null && (tFault === null || alarm < tFault - 1e-9),
+                      delay: (alarm !== null && tFault !== null && alarm >= tFault) ? alarm - tFault : null,
+                      isolatedAs: null, estimate: null, rul: null };
+        if (alarm !== null) {
+            const winS = Math.max(2, 4 / KO);   // slower observer -> longer window
+            const k0 = t.findIndex(v => v >= alarm), k1 = Math.min(n - 1, k0 + Math.round(winS / dt));
+            const fit = fitWindow(k0, k1);
+            if (fit) {
+                out.estimate = fit;
+                const big = Math.max(Math.abs(fit.dF), Math.abs(fit.dB));
+                if (fit.fit < 0.5) out.isolatedAs = 'unexplained (sensor fault or unmodelled effect)';
+                else if (big >= 0.02) {
+                    const ratio = Math.min(Math.abs(fit.dF), Math.abs(fit.dB)) / big;
+                    out.isolatedAs = (ratio > 0.6 && fit.dF * fit.dB > 0) ? 'both rotors' : (Math.abs(fit.dF) > Math.abs(fit.dB) ? 'front rotor' : 'back rotor');
+                } else if (fit.dD > 0.005) out.isolatedAs = 'travel friction';
+                else out.isolatedAs = 'unexplained (sensor fault or unmodelled effect)';
+            }
+        }
+        // running thrust-health estimate over a sliding window and a linear-trend RUL prediction
+        const W = Math.round(Math.max(2, 4 / KO) / dt), etaHat = new Array(n).fill(null);
+        // each window estimate describes the thrust about half a window plus the observer lag earlier
+        const lag = (W * dt) / 2 + 1 / KO;
+        for (let k = W; k < n; k += 5) {
+            const f = fitWindow(k - W, k); if (!f) continue;
+            etaHat[k] = 1 - (f.dF + f.dB) / 2;
+        }
+        const rul = [];
+        const Wr = c.rulWindow;
+        for (let k = 0; k < n; k += 50) {
+            const pts = []; for (let q = 0; q <= k; q++) if (etaHat[q] !== null && t[q] - lag >= t[k] - Wr) pts.push([t[q] - lag, etaHat[q]]);
+            if (pts.length < 10 || pts[pts.length - 1][0] - pts[0][0] < 0.5 * Wr) continue;   // need half a window of history
+            const mt = pts.reduce((s2, p) => s2 + p[0], 0) / pts.length, me = pts.reduce((s2, p) => s2 + p[1], 0) / pts.length;
+            let sxx = 0, sxy = 0; for (const p of pts) { sxx += (p[0] - mt) ** 2; sxy += (p[0] - mt) * (p[1] - me); }
+            const slope = sxy / sxx, now = me + slope * (t[k] - mt);
+            let sse = 0; for (const p of pts) sse += (p[1] - me - slope * (p[0] - mt)) ** 2;
+            const sd = Math.sqrt(sse / pts.length);
+            // predict only for a steady downward trend (an abrupt drop is a fault, not wear)
+            const tstat = -slope / (sd / Math.sqrt(sxx) + 1e-12);   // significance of the downward slope
+            const pred = (slope < -5e-4 && sd < 0.01 && tstat > 20) ? Math.max(0, (now - c.eolEta) / -slope) : null;
+            rul.push({ t: t[k], eta: now, slope, rul: pred });
+        }
+        // true end of life for a ramped thrust loss, if any
+        let tEol = null;
+        for (let k = 0; k < n; k++) { const e = run.eta[k]; if (Math.min(e[0], e[1]) <= c.eolEta + 1e-9) { tEol = t[k]; break; } }
+        out.etaHat = etaHat; out.lag = lag; out.rulTrace = rul; out.tEol = tEol; out.eolEta = c.eolEta;
+        // prognosis summary: a sustained trend is needed; with a known end of life, the alpha = 10 % prognostic horizon
+        const preds = rul.filter(q => q.rul !== null);
+        out.prog = { n: preds.length, sustained: preds.length >= 5, tAccurate: null, horizon: null, last: preds.length ? preds[preds.length - 1] : null };
+        if (out.prog.sustained && tEol !== null) {
+            const before = preds.filter(q => q.t < tEol);
+            for (let i = 0; i < before.length; i++) {
+                if (before.slice(i).every(q => Math.abs(q.rul - (tEol - q.t)) <= 0.1 * (tEol - q.t) + 0.5)) { out.prog.tAccurate = before[i].t; out.prog.horizon = tEol - before[i].t; break; }
+            }
+        }
+        out.maxStatBeforeFault = Math.max(0, ...run.s.filter((_, k) => tFault === null || t[k] < tFault));
+        return out;
     }
 
     // Metrics per reference event (one per axis change) and per disturbance, plus run-level measures.
@@ -569,7 +695,8 @@
             if (x[k][0] > P.thMin + 1e-6) left = true; else if (left) lowerStop++;
         }
         const dtLog = t.length > 1 ? t[1] - t[0] : 0;
-        return { events, vmax, satPct: 100 * sat / t.length, pitchStopTime: pitchStop * dtLog,
+        const health = run.r ? healthAnalysis(run, cfg.health) : null;
+        return { health, events, vmax, satPct: 100 * sat / t.length, pitchStopTime: pitchStop * dtLog,
                  upperStopTime: upperStop * dtLog, landingTime: lowerStop * dtLog, failed: !!run.error };
     }
 
@@ -584,12 +711,18 @@
         { id: 'dist', label: 'Disturbance peak deviation', axis: '*', metric: 'maxDeviationDeg', unit: 'deg', limit: 5, on: true },
         { id: 'vmax', label: 'Peak motor voltage', axis: 'run', metric: 'vmax', unit: 'V', limit: 20, on: true },
         { id: 'pstop', label: 'Time on pitch stop', axis: 'run', metric: 'pitchStopTime', unit: 's', limit: 0, on: true },
-        { id: 'ustop', label: 'Time on upper elevation stop', axis: 'run', metric: 'upperStopTime', unit: 's', limit: 0, on: true }
+        { id: 'ustop', label: 'Time on upper elevation stop', axis: 'run', metric: 'upperStopTime', unit: 's', limit: 0, on: true },
+        { id: 'fdd_delay', label: 'Fault detection delay', axis: 'health', metric: 'delay', unit: 's', limit: 1, on: true },
+        { id: 'fdd_false', label: 'False alarms before the fault', axis: 'health', metric: 'falseAlarm', unit: '', limit: 0, on: true }
     ];
     function checkSpecs(metrics, specs = DEFAULT_SPECS) {
         return specs.filter(s => s.on).map(s => {
             let value;
-            if (s.axis === 'run') value = metrics[s.metric];
+            if (s.axis === 'health') {
+                const hm = metrics.health;
+                if (!hm || hm.tFault === null) return { ...s, value: null, pass: null, note: 'only checked in tests with a fault' };
+                value = s.metric === 'falseAlarm' ? (hm.falseAlarm ? 1 : 0) : (hm.delay === null ? Infinity : hm.delay);
+            } else if (s.axis === 'run') value = metrics[s.metric];
             else {
                 const ev = metrics.events.filter(e => (s.axis === '*' || e.axis === s.axis) && e[s.metric] !== undefined);
                 if (!ev.length) return { ...s, value: null, pass: null, note: 'not exercised by this test' };
@@ -851,5 +984,6 @@ function step(y, ref, dt, mem, P, lib) {
     return { DEG, mul, add, T, inv, solve, eye, zeros, diag, eigvals, csolve, care, lqr, lqriGain, augmentedModel,
              evalExpr, builtinPID, builtinLQRI, compileCode, compileDiagram, BLOCK_TYPES, SIGNALS, nIn, nOut,
              scenarioFns, SCENARIOS, runScenario, computeMetrics, DEFAULT_SPECS, checkSpecs, linearAnalysis,
+             HEALTH_DEFAULTS, makeHealthMonitor, healthAnalysis,
              CODE_TEMPLATES, diagramPID, flatten, unflatten, makeLib };
 }));

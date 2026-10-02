@@ -1399,7 +1399,7 @@
 
             // Blue Outer Ring Guard
             const hoopGeo = new THREE.TorusGeometry(1.8, 0.08, 16, 64);
-            const hoop = new THREE.Mesh(hoopGeo, mats.blueMetal);
+            const hoop = new THREE.Mesh(hoopGeo, mats.blueMetal.clone());   // own material: tinted red when the rotor is faulty
             hoop.rotation.x = Math.PI / 2;
             hoop.position.y = 0.4;
             hoop.castShadow = true;
@@ -1429,8 +1429,18 @@
             blur.visible = false;
             rotorGroup.add(blur);
 
-            motorGroup.userData = { blades: rotorGroup, blur: blur };
+            motorGroup.userData = { blades: rotorGroup, blur: blur, hoop: hoop };
             return motorGroup;
+        }
+
+        // Fault visualisation: the guard ring of a rotor that has lost thrust turns red (eta = 1 healthy).
+        const HOOP_OK = new THREE.Color(0x005bb5), HOOP_BAD = new THREE.Color(0xdc2626);
+        function setRotorHealth(eta) {
+            [['front', eta[0]], ['back', eta[1]]].forEach(([k, e]) => {
+                const g = parts.rotors && parts.rotors[k]; if (!g || !g.userData.hoop) return;
+                const loss = Math.min(1, Math.max(0, (1 - e) / 0.5));   // full red at 50 % thrust loss
+                g.userData.hoop.material.color.copy(HOOP_OK).lerp(HOOP_BAD, loss);
+            });
         }
 
         // ---- Control diagram: block diagrams that match the implemented controllers (sim-core.js) ----
@@ -2044,8 +2054,12 @@
             simX = [(sc.theta0 ?? 0) * Math.PI / 180, 0, 0, 0, 0, 0]; syncStateFromSim();
             const f = Sim3DOFDesign.scenarioFns(sc);
             o.controller.reset();
-            live = { ctrl: o.controller, sc, ref: f.ref, dist: f.dist, k: 0, N: Math.round(sc.T / SIM_H),
-                     log: { t: [], x: [], V: [], ref: [] }, onDone: o.onDone, done: false, label: o.label, error: null, t0: performance.now() };
+            const faults = Sim3DOF.makeFaults(sc.faults); faults.reset();
+            const mon = Sim3DOFDesign.makeHealthMonitor(sc, o.healthCfg); mon.reset();
+            live = { ctrl: o.controller, sc, ref: f.ref, dist: f.dist, k: 0, N: Math.round(sc.T / SIM_H), faults, mon,
+                     log: { t: [], x: [], V: [], ref: [], y: [], eta: [], r: [], s: [], mlive: [], g: [] },
+                     onDone: o.onDone, done: false, label: o.label, error: null, t0: performance.now() };
+            setRotorHealth([1, 1]);
             state.mode = 'auto'; ui.toggleMode.checked = true; ui.modeLabel.textContent = 'STUDIO';
             ui.autoControls.classList.add('opacity-50', 'pointer-events-none');
             ui.sliderFront.disabled = true; ui.sliderBack.disabled = true;
@@ -2055,27 +2069,36 @@
         function liveStep() {
             const t = live.k * SIM_H;
             const ref = live.done ? live.lastRef : live.ref(t);
-            const y = stepper.sensor.measure(simX, SIM_H);
+            const fs = live.faults.active ? live.faults.at(Math.min(t, live.sc.T), simX) : null;   // a fault persists after the test ends
+            if (fs && live.k % 20 === 0) setRotorHealth(fs.eta);
+            const y = stepper.sensor.measure(simX, SIM_H, fs);
             let V;
             if (live.error) V = [0, 0];
             else { try { V = live.ctrl.step(y, ref, SIM_H); if (!Number.isFinite(V[0]) || !Number.isFinite(V[1])) throw new Error('controller returned a non-finite voltage'); }
                    catch (e) { live.error = e.message; V = [0, 0]; } }
             V = [Math.max(-P.Vmax, Math.min(P.Vmax, V[0])), Math.max(-P.Vmax, Math.min(P.Vmax, V[1]))];
             inputs.front = V[0]; inputs.back = V[1];
-            if (!live.done && live.k % 10 === 0) { live.log.t.push(t); live.log.x.push(simX.slice()); live.log.V.push(V); live.log.ref.push([ref.theta, ref.psi]); }
-            simX = stepper.step(simX, V, SIM_H, (!live.done && live.dist) ? live.dist(t) : null);
+            const m = live.done ? null : live.mon.step(t, y, V, SIM_H);
+            if (!live.done && live.k % 10 === 0) {
+                const L = live.log;
+                L.t.push(t); L.x.push(simX.slice()); L.V.push(V); L.ref.push([ref.theta, ref.psi]);
+                L.y.push(y); L.eta.push(fs ? fs.eta.slice() : [1, 1]); L.r.push(m.r); L.s.push(m.s); L.mlive.push(m.live); L.g.push(m.g);
+            }
+            simX = stepper.step(simX, V, SIM_H, (!live.done && live.dist) ? live.dist(t) : null, fs);
             state.targetElevation = ref.theta; state.targetTravel = ref.psi;
             live.k++;
             if (!live.done && live.k > live.N) {
                 live.done = true; live.lastRef = ref;
-                const run = { scenario: live.sc, controllerName: live.ctrl.name, kind: live.ctrl.kind, t: live.log.t, x: live.log.x, V: live.log.V,
-                              ref: live.log.ref, error: live.error, tFail: null, wallMs: performance.now() - live.t0, P: Object.assign({}, P), live: true };
+                const L = live.log;
+                const run = { scenario: live.sc, controllerName: live.ctrl.name, kind: live.ctrl.kind, t: L.t, x: L.x, V: L.V,
+                              ref: L.ref, error: live.error, tFail: null, wallMs: performance.now() - live.t0, P: Object.assign({}, P), live: true,
+                              y: L.y, eta: L.eta, r: L.r, s: L.s, mlive: L.mlive, g: L.g, alarm: live.mon.alarm };
                 if (live.onDone) live.onDone(run);
                 showLiveBanner();
             }
         }
         function stopLive() {
-            live = null;
+            live = null; setRotorHealth([1, 1]);
             state.mode = 'manual'; ui.toggleMode.checked = false; ui.modeLabel.textContent = 'MANUAL';
             ui.sliderFront.disabled = false; ui.sliderBack.disabled = false;
             inputs.front = 0; inputs.back = 0;

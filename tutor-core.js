@@ -86,6 +86,12 @@ Rules:
                 : `${e.axis} ${e.type} t=${e.t} ${e.from}->${e.to} deg: OS ${r2(e.overshootPct)}%, rise ${r2(e.riseTime)} s, settle ${r2(e.settlingTime)} s, ss err ${r2(e.steadyStateErrDeg)} deg`),
             run: `peak |V| ${r2(m.vmax)} V, saturated ${r2(m.satPct)}% of time, pitch stop ${r2(m.pitchStopTime)} s, upper elevation stop ${r2(m.upperStopTime)} s`
         };
+        const hm = m.health;
+        if (hm && (run.scenario.faults || []).length) {   // only for tests with injected faults, so fault-free prompts are unchanged
+            out.health_monitor = `faults injected: ${run.scenario.faults.map(f => `${f.type}${f.target ? ' ' + f.target : ''} size ${f.size} at t=${f.t}${f.ramp ? ' ramp ' + f.ramp + 's' : ''}`).join(' | ')}; ` +
+                (hm.alarm === null ? 'no alarm' : `alarm at ${r2(hm.alarm)} s (delay ${r2(hm.delay)} s), isolated as ${hm.isolatedAs}` +
+                 (hm.estimate ? `, estimated thrust loss front ${r2(hm.estimate.dF * 100)}% back ${r2(hm.estimate.dB * 100)}%` : ''));
+        }
         if (withHistory) {
             const step = Math.max(1, Math.round(2 / (run.t[1] - run.t[0])));   // one sample per 2 s keeps prompts small
             out.history_2s = { t: [], theta_deg: [], psi_deg: [], phi_deg: [], Vf: [], Vb: [], theta_ref: [], psi_ref: [] };

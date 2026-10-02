@@ -61,6 +61,8 @@
     // a model saved by an older version may no longer be offered (e.g. retired from the free tier): fall back to the default
     if (window.Sim3DOFTutor && !window.Sim3DOFTutor.MODELS.includes(st.ai.model)) st.ai.model = window.Sim3DOFTutor.DEFAULTS.model;
     st.ai.remember = !!st.ai.key;
+    for (const d of D.DEFAULT_SPECS) if (!st.specs.some(x => x.id === d.id)) st.specs.push(JSON.parse(JSON.stringify(d)));   // specs added in later versions
+    st.metricCfg.health = Object.assign({ thrScale: 1, dwell: 0.25, eolEta: 0.6 }, st.metricCfg.health || {});
     const save = () => { store.set('design', st.design); store.set('scenario', st.scenario); store.set('specs', st.specs); store.set('metricCfg', st.metricCfg); };
 
     const designLabel = () => ({ pid: 'PID (built-in)', lqri: 'LQR-I (built-in)', code: 'Code', diagram: 'Block diagram' })[st.design.type];
@@ -409,6 +411,23 @@
             h('td', {}, h('select', { class: 'border rounded px-1', onchange: (e) => { q.axis = e.target.value; save(); } }, ['theta', 'phi', 'psi'].map(a => h('option', { value: a, selected: a === q.axis }, a)))),
             h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.tau, onchange: (e) => { q.tau = parseFloat(e.target.value) || 0; save(); } })),
             h('td', {}, btn('✕', () => { sc.dists.splice(i, 1); save(); render(); }, 'danger'))));
+        const FT = { rotor: { label: 'Rotor thrust loss', targets: ['front', 'back', 'both'], unit: '% of thrust', scale: 100 },
+                     friction: { label: 'Travel friction increase', targets: null, unit: 'N m s/rad', scale: 1 },
+                     bias: { label: 'Encoder bias', targets: ['theta', 'phi', 'psi'], unit: 'deg', scale: 1 },
+                     stuck: { label: 'Encoder stuck', targets: ['theta', 'phi', 'psi'], unit: '', scale: 1 } };
+        const inp = (w, v, on) => h('input', { class: 'px-1 py-0.5 border rounded text-right font-mono text-sm', style: 'width:' + w, value: v, onchange: (e) => { on(parseFloat(e.target.value) || 0); save(); renderTestPreview(); } });
+        const faultRows = (sc.faults || []).map((f, i) => {
+            const ft = FT[f.type] || FT.rotor;
+            return h('tr', {},
+                h('td', {}, h('select', { class: 'border rounded px-1 text-sm', onchange: (e) => { const ty = e.target.value; Object.assign(f, { type: ty, target: FT[ty].targets ? FT[ty].targets[0] : undefined,
+                    size: { rotor: 0.3, friction: 0.05, bias: 2, stuck: 0 }[ty], ramp: 0 }); save(); render(); } },
+                    Object.entries(FT).map(([k, v]) => h('option', { value: k, selected: k === f.type }, v.label)))),
+                h('td', {}, ft.targets ? h('select', { class: 'border rounded px-1 text-sm', onchange: (e) => { f.target = e.target.value; save(); } }, ft.targets.map(a => h('option', { value: a, selected: a === f.target }, a))) : ''),
+                h('td', {}, inp('3.2rem', f.t, v => { f.t = v; })),
+                h('td', {}, f.type === 'stuck' ? '' : h('span', { class: 'whitespace-nowrap' }, inp('3.6rem', +(f.size * ft.scale).toFixed(4), v => { f.size = v / ft.scale; }), h('span', { class: 'text-[11px] text-slate-500 ml-1' }, ft.unit === '% of thrust' ? '%' : ft.unit))),
+                h('td', {}, f.type === 'stuck' ? '' : inp('3.2rem', f.ramp || 0, v => { f.ramp = v; })),
+                h('td', {}, btn('✕', () => { sc.faults.splice(i, 1); save(); render(); }, 'danger')));
+        });
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             h('div', { class: 'space-y-3' },
                 card('Test', h('div', { class: 'mb-2' }, presetSel),
@@ -425,7 +444,11 @@
                     h('div', { class: 'text-xs text-slate-500 mt-1' }, 'ramp = 0 gives a step; otherwise the reference moves linearly over that many seconds.')),
                 card('Disturbance torques', h('table', { class: 'text-sm' },
                     h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 't (s)'), h('th', {}, 'for (s)'), h('th', {}, 'axis'), h('th', {}, 'τ (N m)'), h('th', {})), distRows),
-                    h('div', { class: 'mt-2' }, btn('+ Add disturbance', () => { (sc.dists = sc.dists || []).push({ t: 10, dur: 0.5, axis: 'theta', tau: -0.3 }); save(); render(); })))),
+                    h('div', { class: 'mt-2' }, btn('+ Add disturbance', () => { (sc.dists = sc.dists || []).push({ t: 10, dur: 0.5, axis: 'theta', tau: -0.3 }); save(); render(); }))),
+                card('Faults (diagnosis and prognosis)', h('div', { class: 'overflow-x-auto' }, h('table', { class: 'text-sm' },
+                    h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 'fault'), h('th', {}, 'where'), h('th', {}, 'from t (s)'), h('th', {}, 'size'), h('th', {}, 'ramp (s)'), h('th', {})), faultRows)),
+                    h('div', { class: 'mt-2' }, btn('+ Add fault', () => { (sc.faults = sc.faults || []).push({ type: 'rotor', target: 'front', t: Math.round(sc.T / 2), size: 0.3, ramp: 0 }); save(); render(); })),
+                    h('div', { class: 'text-xs text-slate-500 mt-1' }, 'ramp = 0 gives an abrupt fault; a ramp makes it grow linearly over that many seconds (degradation). A health monitor runs in every test; see Results.'))),
             card('Reference preview', h('canvas', { id: 'studio-test-preview', class: 'w-full', style: 'height:280px' }))));
         renderTestPreview();
     }
@@ -434,7 +457,8 @@
         const { ref } = D.scenarioFns(st.scenario);
         const t = [], th = [], ps = [];
         for (let k = 0; k <= 400; k++) { const tt = st.scenario.T * k / 400; const r = ref(tt); t.push(tt); th.push(r.theta / DEG); ps.push(r.psi / DEG); }
-        plot(cv, [{ panel: 0, x: t, y: th, color: COLORS[3], label: 'θ_r' }, { panel: 1, x: t, y: ps, color: COLORS[0], label: 'ψ_r' }], ['θ_r (deg)', 'ψ_r (deg)']);
+        plot(cv, [{ panel: 0, x: t, y: th, color: COLORS[3], label: 'θ_r' }, { panel: 1, x: t, y: ps, color: COLORS[0], label: 'ψ_r' }], ['θ_r (deg)', 'ψ_r (deg)'],
+             { vlines: (st.scenario.faults || []).map(f => ({ x: f.t, color: '#dc2626', label: 'fault' })) });
     }
 
     // ------------------------------------------------------------------ 3. specs
@@ -460,12 +484,17 @@
                     h('li', {}, 'Steady-state error is the mean absolute error over the last second of the window.'),
                     h('li', {}, 'Disturbance deviation is the peak departure from the angle held when the torque starts.'),
                     h('li', {}, 'Each spec takes the worst event of the test. Specs a test does not exercise show n/a.'),
-                    h('li', {}, 'Instructors can export a spec sheet and share it with students.')))));
+                    h('li', {}, 'Instructors can export a spec sheet and share it with students.')),
+                h('div', { class: 'text-xs font-bold uppercase tracking-wide text-slate-500 mt-4 mb-1' }, 'Health monitor'),
+                numField('Threshold scale', st.metricCfg.health.thrScale, (v) => { st.metricCfg.health.thrScale = parseFloat(v); save(); }, '×', 'Multiplies the residual thresholds (0.02, 0.005, 0.01 N m on elevation, pitch, travel; ×1.5 with hardware effects)'),
+                numField('Alarm dwell', st.metricCfg.health.dwell, (v) => { st.metricCfg.health.dwell = parseFloat(v); save(); }, 's', 'The statistic must stay above 1 this long to raise an alarm'),
+                numField('End of life', st.metricCfg.health.eolEta * 100, (v) => { st.metricCfg.health.eolEta = parseFloat(v) / 100; save(); }, '% thrust', 'Remaining useful life is predicted to the time the estimated thrust effectiveness reaches this level'),
+                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Detection specs apply only to tests that contain a fault.'))));
     }
 
     // ------------------------------------------------------------------ running
     function makeRunRecord(run, label) {
-        const metrics = D.computeMetrics(run, st.metricCfg);
+        const metrics = D.computeMetrics(run, Object.assign({}, st.metricCfg, { health: st.metricCfg.health }));
         const checks = D.checkSpecs(metrics, st.specs);
         const id = ++st.runCounter;
         return Object.assign(run, { id, label: label || `Run ${id} · ${designLabel()} · ${run.scenario.name}`, design: JSON.parse(JSON.stringify(st.design)),
@@ -475,7 +504,7 @@
         let ctrl;
         try { ctrl = controllerFactory()(Object.assign({}, S.PRESETS[st.scenario.preset || 'nominal'])); }
         catch (e) { message('The controller could not be built:\n' + e.message, 'err'); return; }
-        const run = D.runScenario(ctrl, st.scenario);
+        const run = D.runScenario(ctrl, st.scenario, { healthCfg: st.metricCfg.health });
         const rec = makeRunRecord(run);
         st.runs.push(rec); st.selectedRun = rec.id;
         const np = rec.checks.filter(c => c.pass === true).length, nt = rec.checks.filter(c => c.pass !== null).length;
@@ -489,7 +518,7 @@
         catch (e) { message('The controller could not be built:\n' + e.message, 'err'); return; }
         if (!window.Sim3DOFApp || !window.Sim3DOFApp.startLive) { message('The 3-D view is not available.', 'err'); return; }
         close();
-        window.Sim3DOFApp.startLive({ controller: ctrl, scenario: JSON.parse(JSON.stringify(st.scenario)), label: designLabel(),
+        window.Sim3DOFApp.startLive({ controller: ctrl, scenario: JSON.parse(JSON.stringify(st.scenario)), label: designLabel(), healthCfg: st.metricCfg.health,
             onDone: (run) => {
                 const rec = makeRunRecord(run, `Run ${st.runCounter + 1} · ${designLabel()} · ${run.scenario.name} (live)`);
                 st.runs.push(rec); st.selectedRun = rec.id;
@@ -527,8 +556,10 @@
                 h('td', {}, e.type === 'disturbance' ? '' : `${e.from} → ${e.to}`), h('td', {}, fmt(e.overshootPct, 1)), h('td', {}, fmt(e.riseTime)),
                 h('td', {}, e.type === 'disturbance' ? fmt(e.recoveryTime) : fmt(e.settlingTime)), h('td', {}, fmt(e.steadyStateErrDeg, 3)), h('td', {}, fmt(e.maxDeviationDeg))))),
             h('div', { class: 'text-xs text-slate-500 mt-2' }, `Peak voltage ${fmt(sel.metrics.vmax)} V · saturated ${fmt(sel.metrics.satPct, 1)} % of the time · on pitch stop ${fmt(sel.metrics.pitchStopTime)} s · plant: ${sel.scenario.preset}${sel.scenario.hw ? ' + hardware effects' : ''}`));
+        const hc = healthCard(sel);
         body.append(h('div', { class: 'grid grid-cols-4 gap-3' }, list,
-            h('div', { class: 'col-span-3 space-y-3' }, card('Time histories (checked runs overlaid; dashed = reference of the selected run)', cv), h('div', { class: 'grid grid-cols-2 gap-3' }, checks, ev))));
+            h('div', { class: 'col-span-3 space-y-3' }, card('Time histories (checked runs overlaid; dashed = reference of the selected run)', cv), h('div', { class: 'grid grid-cols-2 gap-3' }, checks, ev), hc ? hc.el : null)));
+        if (hc) hc.draw();
         const series = [];
         const runs = st.runs.filter(r => r.overlay);
         for (const r of runs) {
@@ -544,6 +575,59 @@
         const P = sel.P;
         plot(cv, series, ['θ elevation (deg)', 'ψ travel (deg)', 'φ pitch (deg)', 'V_f (V)', 'V_b (V)'],
              { hlines: { 2: [P.phMax / DEG, -P.phMax / DEG], 3: [P.Vmax], 4: [P.Vmax] } });
+    }
+    // Health monitor view: detection statistic, residual torques, thrust-health estimate and RUL
+    function healthCard(sel) {
+        const hm = sel.metrics.health; if (!hm) return null;
+        const faults = (sel.scenario.faults || []);
+        const ft = { rotor: 'rotor thrust loss', friction: 'travel friction', bias: 'encoder bias', stuck: 'encoder stuck' };
+        const injected = faults.length ? faults.map(f => `${f.target ? f.target + ' ' : ''}${ft[f.type]}` + (f.type === 'rotor' ? ` ${fmt(f.size * 100, 0)} %` : f.type === 'friction' ? ` +${fmt(f.size, 3)} N m s/rad` : f.type === 'bias' ? ` ${fmt(f.size, 2)}°` : '') +
+            ` at ${fmt(f.t, 1)} s` + (f.ramp > 0 ? ` (over ${fmt(f.ramp, 0)} s)` : ' (abrupt)')).join('; ') : 'none (healthy run)';
+        let est = '';
+        if (hm.estimate && hm.isolatedAs) {
+            const e = hm.estimate;
+            if (/rotor/.test(hm.isolatedAs)) est = `estimated thrust loss: front ${fmt(e.dF * 100, 1)} %, back ${fmt(e.dB * 100, 1)} %`;
+            else if (/friction/.test(hm.isolatedAs)) est = `estimated extra travel damping: ${fmt(e.dD, 4)} N m s/rad`;
+            else est = `the rotor and friction signatures explain only ${fmt(Math.max(0, e.fit) * 100, 0)} % of the residual`;
+        }
+        const rulNow = (hm.prog && hm.prog.sustained) ? hm.rulTrace.filter(q => q.rul !== null) : [];
+        const rows = [
+            ['Injected', injected],
+            ['Detection', hm.alarm === null ? 'no alarm' : `alarm at ${fmt(hm.alarm, 2)} s` + (hm.falseAlarm ? ' (false alarm: before any fault)' : hm.delay !== null ? `, ${fmt(hm.delay, 2)} s after the fault` : '')],
+            ['Isolation', hm.isolatedAs ? hm.isolatedAs + (est ? ' · ' + est : '') : '—'],
+            ['Prognosis', !(hm.prog && hm.prog.sustained) ? 'no sustained degradation trend, so no life prediction' :
+                `end of life = ${fmt(hm.eolEta * 100, 0)} % thrust. ` + (hm.tEol !== null
+                    ? (hm.prog.tAccurate !== null ? `The predicted remaining life stays within ±10 % of the truth from t = ${fmt(hm.prog.tAccurate, 0)} s, ${fmt(hm.prog.horizon, 0)} s before end of life (true end of life ${fmt(hm.tEol, 1)} s).`
+                                                  : `The prediction never settles within ±10 % of the truth (true end of life ${fmt(hm.tEol, 1)} s).`)
+                    : `Latest prediction: ${fmt(hm.prog.last.rul, 1)} s remaining at t = ${fmt(hm.prog.last.t, 0)} s.`)]
+        ];
+        const cvh = h('canvas', { class: 'w-full', style: 'height:' + (rulNow.length ? 420 : 300) + 'px' });
+        const el = card('Health monitor · ' + sel.label,
+            h('table', { class: 'w-full text-sm mb-2' }, rows.map(([k, v]) => h('tr', {}, h('td', { class: 'pr-3 py-0.5 text-slate-500 align-top whitespace-nowrap' }, k), h('td', {}, v)))),
+            sel.scenario.preset !== 'nominal' ? h('div', { class: 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-2' },
+                'This test uses the identified plant set, but the monitor uses the nominal model. Alarms here can come from the model mismatch itself: a monitor is only as good as its model.') : null,
+            cvh,
+            h('div', { class: 'text-xs text-slate-500 mt-2' }, 'The monitor knows only the nominal model, the commanded voltages and the measured angles and rates. r is the torque on each axis that the model cannot explain (a generalized-momentum observer); the statistic is r over its threshold, and an alarm needs it above 1 for the dwell time. Isolation fits r to the signatures of a thrust loss on each rotor and of extra travel friction. Note how the tracking plots above can look normal while r shows the fault: integral action hides it.'));
+        const draw = () => {
+            const t = sel.t, series = [
+                { panel: 0, x: t, y: sel.s, color: '#4a3aa7', label: 'statistic' },
+                { panel: 1, x: t, y: sel.r.map(v => v[0]), color: COLORS[3], label: 'r_θ' }, { panel: 1, x: t, y: sel.r.map(v => v[1] * 4), color: COLORS[6], label: 'r_φ ×4' },
+                { panel: 1, x: t, y: sel.r.map(v => v[2] * 2), color: COLORS[0], label: 'r_ψ ×2' }];
+            const labels = ['statistic', 'r (N m)'];
+            const pts = []; (hm.etaHat || []).forEach((v, k) => { if (v !== null) pts.push(k); });
+            series.push({ panel: 2, x: t, y: sel.eta.map(e => (e[0] + e[1]) / 2 * 100), color: '#0b0b0b', dash: [5, 4], w: 1, label: 'true (mean of the rotors)' });
+            series.push({ panel: 2, x: pts.map(k => t[k] - (hm.lag || 0)), y: pts.map(k => hm.etaHat[k] * 100), color: '#dc2626', label: 'estimated' });
+            labels.push('thrust (%)');
+            if (rulNow.length) {
+                series.push({ panel: 3, x: rulNow.map(q => q.t), y: rulNow.map(q => Math.min(q.rul, sel.scenario.T)), color: '#dc2626', label: 'predicted RUL' });
+                if (hm.tEol !== null) series.push({ panel: 3, x: rulNow.map(q => q.t), y: rulNow.map(q => Math.max(0, hm.tEol - q.t)), color: '#0b0b0b', dash: [5, 4], w: 1, label: 'true' });
+                labels.push('RUL (s)');
+            }
+            const vl = faults.map(f => ({ x: f.t, color: '#dc2626', label: 'fault' }));
+            if (hm.alarm !== null) vl.push({ x: hm.alarm, color: '#d97706', label: 'alarm' });
+            plot(cvh, series, labels, { hlines: { 0: [1], 2: [hm.eolEta * 100] }, vlines: vl });
+        };
+        return { el, draw };
     }
     function runCSV(r) {
         const head = 't_s,theta_deg,phi_deg,psi_deg,dtheta_deg_s,dphi_deg_s,dpsi_deg_s,Vf_V,Vb_V,theta_ref_deg,psi_ref_deg';
@@ -643,6 +727,8 @@
             ctx.fillStyle = ink; ctx.textAlign = 'right';
             for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step) { const yy = fy(v); ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(W - R, yy); ctx.stroke(); ctx.fillText(+v.toFixed(6) + '', L - 4, yy + 4); }
             ((opt.hlines || {})[p] || []).forEach(v => { if (v < y0 || v > y1) return; ctx.save(); ctx.strokeStyle = '#b4b2a8'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(L, fy(v)); ctx.lineTo(W - R, fy(v)); ctx.stroke(); ctx.restore(); });
+            (opt.vlines || []).forEach(m => { if (m.x < x0 || m.x > x1) return; ctx.save(); ctx.strokeStyle = m.color; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(fx(m.x), top); ctx.lineTo(fx(m.x), top + ph); ctx.stroke();
+                if (p === 0 && m.label) { ctx.fillStyle = m.color; ctx.textAlign = 'left'; ctx.fillText(m.label, fx(m.x) + 3, top + ph - 5); } ctx.restore(); });
             ctx.save(); ctx.translate(12, top + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(labels[p], 0, 0); ctx.restore();
             ctx.save(); ctx.beginPath(); ctx.rect(L, top, W - L - R, ph); ctx.clip();
             for (const s0 of series) if (s0.panel === p) {

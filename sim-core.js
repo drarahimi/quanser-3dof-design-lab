@@ -19,7 +19,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
     const DEG = Math.PI / 180;
-    const VERSION = '2.1.0';
+    const VERSION = '2.2.0';
 
     // Preset A: vendor nominal values as reproduced in Li et al., IEEE TIE 2015, and
     // Wang et al., arXiv:2008.10817 (Table I). Jt = Je + Jp is derived from the mass
@@ -112,15 +112,122 @@
         let prev = null, rate = [0, 0, 0];
         return {
             reset() { prev = null; rate = [0, 0, 0]; },
-            measure(x, h) {
-                if (!hw || !hw.encoders) return x.slice();
-                const y = [quant(x[0], P.encCounts.theta), quant(x[1], P.encCounts.phi), quant(x[2], P.encCounts.psi)];
-                if (prev) {
-                    const a = Math.exp(-wc * h);
-                    for (let i = 0; i < 3; i++) rate[i] = a * rate[i] + (1 - a) * (y[i] - prev[i]) / h;
+            measure(x, h, fs) {
+                let y;
+                if (!hw || !hw.encoders) y = x.slice();
+                else {
+                    const a = [quant(x[0], P.encCounts.theta), quant(x[1], P.encCounts.phi), quant(x[2], P.encCounts.psi)];
+                    if (fs) for (let i = 0; i < 3; i++) { a[i] += fs.bias[i]; if (fs.stuck[i] !== null) a[i] = fs.stuck[i]; }
+                    if (prev) {
+                        const f = Math.exp(-wc * h);
+                        for (let i = 0; i < 3; i++) rate[i] = f * rate[i] + (1 - f) * (a[i] - prev[i]) / h;
+                    }
+                    prev = a;
+                    return [a[0], a[1], a[2], rate[0], rate[1], rate[2]];
                 }
-                prev = y;
-                return [y[0], y[1], y[2], rate[0], rate[1], rate[2]];
+                if (fs) for (let i = 0; i < 3; i++) {   // ideal rate sensing: a stuck channel reads constant, rate 0
+                    y[i] += fs.bias[i];
+                    if (fs.stuck[i] !== null) { y[i] = fs.stuck[i]; y[i + 3] = 0; }
+                }
+                return y;
+            }
+        };
+    }
+
+    // ----- Faults (for diagnosis and prognosis exercises) -----
+    // faults: [{ type: 'rotor', target: 'front'|'back'|'both', t, size (fraction of thrust lost), ramp (s, 0 = abrupt) },
+    //          { type: 'friction', t, size (extra travel damping, N m s/rad), ramp },
+    //          { type: 'bias', target: 'theta'|'phi'|'psi', t, size (deg), ramp },
+    //          { type: 'stuck', target: 'theta'|'phi'|'psi', t }]
+    // A rotor fault scales that rotor's thrust: F = eta * Kf * V with eta = 1 - size * progress.
+    const AXIS = { theta: 0, phi: 1, psi: 2 };
+    function makeFaults(list) {
+        const faults = (list || []).filter(f => f && f.type);
+        const stuckAt = [null, null, null];
+        const progress = (f, t) => t + 1e-12 < f.t ? 0 : (f.ramp > 0 ? Math.min(1, (t - f.t) / f.ramp) : 1);
+        return {
+            active: faults.length > 0,
+            list: faults,
+            reset() { stuckAt[0] = stuckAt[1] = stuckAt[2] = null; },
+            // state at time t; x (true state) is used to latch a stuck sensor's value at onset
+            at(t, x) {
+                const fs = { eta: [1, 1], dDt: 0, bias: [0, 0, 0], stuck: [null, null, null] };
+                for (const f of faults) {
+                    const a = progress(f, t); if (a <= 0) continue;
+                    if (f.type === 'rotor') {
+                        const loss = clamp((f.size || 0) * a, 0, 1);
+                        if (f.target !== 'back') fs.eta[0] *= 1 - loss;
+                        if (f.target !== 'front') fs.eta[1] *= 1 - loss;
+                    } else if (f.type === 'friction') fs.dDt += (f.size || 0) * a;
+                    else if (f.type === 'bias') fs.bias[AXIS[f.target]] += (f.size || 0) * a * DEG;
+                    else if (f.type === 'stuck') {
+                        const i = AXIS[f.target];
+                        if (stuckAt[i] === null && x) stuckAt[i] = x[i];
+                        fs.stuck[i] = stuckAt[i];
+                    }
+                }
+                return fs;
+            }
+        };
+    }
+
+    // ----- Health monitor: generalized-momentum residual against the nominal model -----
+    // For each axis i, r_i estimates the unknown torque (fault or disturbance) acting on it:
+    //   r = K_O [ J w(t) - J w(t0) - integral (tau_model(y, V) + r) dt ],  i.e. r' = K_O (tau_unknown - r).
+    // No differentiation of measurements is needed. The monitor knows only the nominal model,
+    // the commanded voltages and the measured outputs. Stop contacts are not modelled, so the
+    // monitor is inhibited while an angle is at a stop and re-initialised afterwards.
+    function makeMonitor(P, cfg = {}) {
+        const KO = cfg.KO ?? 5;                       // observer bandwidth, rad/s
+        const J = [P.Je, P.Jp, P.Jt];
+        const thr = cfg.thr || [0.02, 0.005, 0.01];   // N m, detection thresholds per axis
+        const dwell = cfg.dwell ?? 0.25;              // s above threshold before an alarm
+        const tauM = cfg.motorTau || 0;               // actuator lag assumed by the monitor
+        const tauS = cfg.tauS ?? 0.1;                 // s, smoothing of the detection statistic only
+        const wcR = cfg.rateFilter || 0;
+        const hold = cfg.hold ?? 0.5;                 // s, monitor inhibited at start-up and after a stop contact              // rad/s: rates come from a filtered derivative, so filter the model torque the same way
+        let r, rs, I, p0, act, inhibit, above, alarm, tf;
+        const reset = () => { r = [0, 0, 0]; rs = [0, 0, 0]; I = [0, 0, 0]; p0 = null; act = null; inhibit = hold; above = 0; alarm = null; tf = null; };
+        reset();
+        const tolStop = cfg.stopTol ?? 0.5 * DEG;     // encoder quantisation can hide exact contact
+        const atStop = (y) => Math.abs(y[1]) >= P.phMax - tolStop || y[0] >= P.thMax - tolStop || y[0] <= P.thMin + tolStop;
+        return {
+            reset,
+            get alarm() { return alarm; },
+            // y: measured outputs, V: commanded voltages applied this step, h: step
+            step(t, y, V, h) {
+                const Vc = [clamp(V[0], -P.Vmax, P.Vmax), clamp(V[1], -P.Vmax, P.Vmax)];   // same order as the plant: clamp, then lag
+                if (!act) act = tauM > 0 ? [0, 0] : Vc.slice();   // motors start at rest, as in the plant
+                if (tauM > 0) { const a = 1 - Math.exp(-h / tauM); act[0] += a * (Vc[0] - act[0]); act[1] += a * (Vc[1] - act[1]); }
+                else { act[0] = Vc[0]; act[1] = Vc[1]; }
+                const Va = act.slice();
+                if (atStop(y)) { inhibit = hold; p0 = null; r = [0, 0, 0]; rs = [0, 0, 0]; above = 0; }
+                else if (inhibit > 0) { inhibit -= h; p0 = null; r = [0, 0, 0]; rs = [0, 0, 0]; above = 0; }
+                const live = inhibit <= 0 && !atStop(y);
+                if (live && p0 === null) { p0 = [J[0] * y[3], J[1] * y[4], J[2] * y[5]]; I = [0, 0, 0]; r = [0, 0, 0]; rs = [0, 0, 0]; }
+                // model torque, passed through the same filter as the measured rates (runs continuously)
+                const acc = derivs(y, Va, P);
+                const tm = [J[0] * acc[3], J[1] * acc[4], J[2] * acc[5]];
+                if (wcR > 0) {
+                    const af = 1 - Math.exp(-wcR * h);
+                    if (!tf) tf = tm.slice(); else for (let i = 0; i < 3; i++) tf[i] += af * (tm[i] - tf[i]);
+                } else tf = tm;
+                // regressors for isolation: unknown torques produced by losing a fraction of each rotor's thrust
+                const c = Math.cos(y[1]), Lc = P.Kf * P.La;
+                const g = [[-Lc * c * Va[0], -Lc * c * Va[1]], [-P.Kf * P.Lh * Va[0], P.Kf * P.Lh * Va[1]],
+                           [Lc * Math.cos(y[0]) * Math.sin(y[1]) * Va[0], Lc * Math.cos(y[0]) * Math.sin(y[1]) * Va[1]]];
+                const out = { r: r.slice(), live, g, s: 0, alarm: null };
+                if (!live) return out;
+                for (let i = 0; i < 3; i++) {
+                    I[i] += (tf[i] + r[i]) * h;
+                    r[i] = KO * (J[i] * y[3 + i] - p0[i] - I[i]);
+                }
+                const as = tauS > 0 ? 1 - Math.exp(-h / tauS) : 1;
+                for (let i = 0; i < 3; i++) rs[i] += as * (r[i] - rs[i]);
+                const s = Math.max(Math.abs(rs[0]) / thr[0], Math.abs(rs[1]) / thr[1], Math.abs(rs[2]) / thr[2]);
+                if (s > 1) { above += h; if (alarm === null && above >= dwell) alarm = t; } else above = 0;
+                out.r = r.slice(); out.s = s; out.alarm = alarm;
+                return out;
             }
         };
     }
@@ -177,14 +284,19 @@
         return {
             sensor, act,
             reset(x0) { sensor.reset(); act[0] = 0; act[1] = 0; },
-            step(x, Vcmd, h, dist) {
+            step(x, Vcmd, h, dist, fs) {
                 let Vc = [clamp(Vcmd[0], -P.Vmax, P.Vmax), clamp(Vcmd[1], -P.Vmax, P.Vmax)];
                 if (hw.motorTau && hw.motorTau > 0) {
                     const a = 1 - Math.exp(-h / hw.motorTau);
                     act[0] += a * (Vc[0] - act[0]); act[1] += a * (Vc[1] - act[1]);
                     Vc = [act[0], act[1]];
                 } else { act[0] = Vc[0]; act[1] = Vc[1]; }
-                const xn = integ(x, Vc, P, h, dist);
+                let Pf = P;
+                if (fs) {   // thrust is linear in voltage, so a loss of effectiveness scales the effective voltage
+                    Vc = [Vc[0] * fs.eta[0], Vc[1] * fs.eta[1]];
+                    if (fs.dDt) Pf = Object.assign({}, P, { Dt: P.Dt + fs.dDt });
+                }
+                const xn = integ(x, Vc, Pf, h, dist);
                 return opts.limits === false ? xn : applyLimits(xn, P);
             }
         };
@@ -206,17 +318,28 @@
                    : opts.controller === 'pid' ? makePID(P, opts.pidGains) : null;
         if (ctrl && ctrl.reset) ctrl.reset();
         let x = (opts.x0 || [0, 0, 0, 0, 0, 0]).slice();
+        const faults = makeFaults(opts.faults); faults.reset();
+        const mon = opts.monitor || null; if (mon) mon.reset();
         const log = { t: [], x: [], V: [], ref: [] };
+        if (faults.active || mon) Object.assign(log, { y: [], eta: [], r: [], s: [], mlive: [], g: [] });
         for (let k = 0; k <= N; k++) {
             const t = k * h;
             const ref = opts.ref ? opts.ref(t) : { theta: 0, psi: 0 };
+            const fs = faults.active ? faults.at(t, x) : null;
+            const y = stepper.sensor.measure(x, h, fs);
             let V;
-            if (ctrl) V = ctrl.step(stepper.sensor.measure(x, h), ref, h);
+            if (ctrl) V = ctrl.step(y, ref, h);
             else V = opts.input(t);
             V = [clamp(V[0], -P.Vmax, P.Vmax), clamp(V[1], -P.Vmax, P.Vmax)];
-            if (k % logEvery === 0) { log.t.push(t); log.x.push(x.slice()); log.V.push(V); log.ref.push([ref.theta, ref.psi]); }
-            if (k < N) x = stepper.step(x, V, h, opts.dist ? opts.dist(t) : null);
+            const m = mon ? mon.step(t, y, V, h) : null;
+            if (k % logEvery === 0) {
+                log.t.push(t); log.x.push(x.slice()); log.V.push(V); log.ref.push([ref.theta, ref.psi]);
+                if (log.y) { log.y.push(y); log.eta.push(fs ? fs.eta.slice() : [1, 1]);
+                             log.r.push(m ? m.r : [0, 0, 0]); log.s.push(m ? m.s : 0); log.mlive.push(m ? m.live : false); log.g.push(m ? m.g : null); }
+            }
+            if (k < N) x = stepper.step(x, V, h, opts.dist ? opts.dist(t) : null, fs);
         }
+        if (mon) log.alarm = mon.alarm;
         return log;
     }
 
@@ -255,6 +378,6 @@
     }
 
     return { VERSION, DEG, PRESETS, NOMINAL, IDENTIFIED, GAINS, hoverVoltage, wrap, clamp, derivs, rk4,
-             semiImplicitEuler, applyLimits, makeSensor, makeLQRI, makePID, makeStepper,
+             semiImplicitEuler, applyLimits, makeSensor, makeLQRI, makePID, makeStepper, makeFaults, makeMonitor,
              simulate, linearizeFD, stepMetrics };
 }));
