@@ -6,6 +6,4 @@ Static site, no build step: `index.html` loads `sim-core.js`, `sim-design.js`, `
 
 Run locally: `python -m http.server 8000` in this folder, then open http://localhost:8000/.
 
-Deployment: Cloudflare Pages, framework preset "None", no build command, output directory `/`.
-
 (c) Afshin Rahimi, University of Windsor. All rights reserved until a licence is added.
