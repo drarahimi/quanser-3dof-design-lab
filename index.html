@@ -206,8 +206,8 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: min(900px, 92vw);
-            max-height: 88vh;
+            width: min(1000px, 94vw);
+            max-height: 92vh;
             z-index: 130;
             cursor: zoom-out;
             box-shadow: 0 18px 48px rgba(15, 23, 42, 0.34);
@@ -215,23 +215,25 @@
         }
 
         #control-diagram-card.expanded #control-diagram-content {
-            min-height: 60vh;
-            padding: 12px;
+            padding: 16px;
         }
 
-        #control-diagram-card.expanded svg {
-            height: auto;
-            min-height: 56vh;
-        }
+        /* compact diagram + short equations in the panel; detailed versions when enlarged */
+        #control-diagram-content svg { display: block; width: 100%; height: auto; }
+        #control-diagram-content .cd-full, #control-diagram-equations .cd-eq-full { display: none; }
+        #control-diagram-card.expanded #control-diagram-content .cd-compact,
+        #control-diagram-card.expanded #control-diagram-equations .cd-eq-compact,
+        #control-diagram-card.expanded .cd-hint { display: none; }
+        #control-diagram-card.expanded #control-diagram-content .cd-full { display: block; max-height: 58vh; }
+        #control-diagram-card.expanded #control-diagram-equations .cd-eq-full { display: block; }
+        .cd-hint { font-size: 11px; color: #64748b; text-align: center; margin-top: 4px; }
 
         #control-diagram-equations {
-            max-height: 142px;
-            overflow-y: auto;
             overflow-x: hidden;
         }
 
         #control-diagram-equations .katex {
-            font-size: 0.92em;
+            font-size: 0.86em;
         }
 
         #control-diagram-equations .katex-display {
@@ -247,7 +249,7 @@
         }
 
         #control-diagram-card.expanded #control-diagram-equations .katex {
-            font-size: 1.75em;
+            font-size: 1.3em;
         }
 
         #control-diagram-card.expanded #control-diagram-equations .katex-display {
@@ -1431,147 +1433,225 @@
             return motorGroup;
         }
 
+        // ---- Control diagram: block diagrams that match the implemented controllers (sim-core.js) ----
+        // Each controller has a compact diagram for the narrow panel and a detailed one for the enlarged view.
+        const CD = (() => {
+            const C = {
+                travel: '#2563eb', elev: '#d97706', pitch: '#7c3aed', volt: '#059669', plant: '#0e7490',
+                ff: '#64748b', fb: '#94a3b8', ink: '#0f172a', sub: '#475569', line: '#334155'
+            };
+            const FONT = "font-family:Inter,system-ui,sans-serif";
+            // "ψ_r", "K_{p,ψ}" -> SVG text with real subscripts (dy-based, works in all browsers)
+            function rich(s) {
+                const out = []; const re = /_\{([^}]*)\}|_([A-Za-z0-9Ͱ-Ͽ]+)/g; let last = 0, m;
+                while ((m = re.exec(s))) {
+                    if (m.index > last) out.push(esc(s.slice(last, m.index)));
+                    out.push('<tspan dy="3" font-size="0.72em">' + esc(m[1] || m[2]) + '</tspan><tspan dy="-3">​</tspan>');
+                    last = re.lastIndex;
+                }
+                if (last < s.length) out.push(esc(s.slice(last)));
+                return out.join('');
+            }
+            function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+            function text(x, y, s, o = {}) {
+                return '<text x="' + x + '" y="' + y + '" text-anchor="' + (o.anchor || 'middle') + '" font-size="' + (o.size || 12) +
+                    '" font-weight="' + (o.weight || 400) + '" fill="' + (o.fill || C.ink) + '" style="' + FONT + '"' +
+                    (o.italic ? ' font-style="italic"' : '') + '>' + rich(s) + '</text>';
+            }
+            // block with a title line and optional second line
+            function box(x, y, w, h, color, l1, l2, o = {}) {
+                const cy = y + h / 2;
+                return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="7" fill="' + color + '14" stroke="' + color + '" stroke-width="1.6"/>' +
+                    (l2 ? text(x + w / 2, cy - 2, l1, { size: o.s1 || 12.5, weight: 600, fill: color }) + text(x + w / 2, cy + 12, l2, { size: o.s2 || 10.5, fill: C.sub })
+                        : text(x + w / 2, cy + 4.5, l1, { size: o.s1 || 12.5, weight: 600, fill: color }));
+            }
+            function chip(x, y, w, color, s) {
+                return '<rect x="' + x + '" y="' + (y - 11) + '" width="' + w + '" height="22" rx="11" fill="#fff" stroke="' + color + '" stroke-width="1.4"/>' +
+                    text(x + w / 2, y + 4.5, s, { size: 12, weight: 600, fill: color });
+            }
+            // summing junction; signs = {w:'+', s:'−', n:'−'} placed by the inputs
+            function sum(x, y, signs) {
+                let s = '<circle cx="' + x + '" cy="' + y + '" r="9" fill="#fff" stroke="' + C.line + '" stroke-width="1.4"/>' +
+                    '<path d="M' + (x - 5) + ' ' + y + 'h10M' + x + ' ' + (y - 5) + 'v10" stroke="' + C.line + '" stroke-width="1.2"/>';
+                const pos = { w: [x - 15, y - 6], n: [x + 9, y - 11], s: [x + 9, y + 19], e: [x + 13, y - 6] };
+                for (const k in signs) s += text(pos[k][0], pos[k][1], signs[k], { size: 11, weight: 700, fill: signs[k] === '+' ? C.sub : '#dc2626' });
+                return s;
+            }
+            function wire(pts, color, o = {}) {
+                const d = 'M' + pts.map(p => p.join(' ')).join(' L');
+                return '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + (o.w || 1.6) + '"' +
+                    (o.dash ? ' stroke-dasharray="4 3"' : '') + (o.arrow === false ? '' : ' marker-end="url(#cd-arrow-' + o.id + ')"') + ' stroke-linejoin="round"/>' +
+                    (o.anim && !o.dash ? '<path class="cd-flow" d="' + d + '" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="0.1 9"/>' : '');
+            }
+            function defs(id, colors) {
+                return '<defs>' + colors.map((c, i) => '<marker id="cd-arrow-' + id + i + '" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">' +
+                    '<path d="M0,0.5 L7.5,4 L0,7.5 Z" fill="' + c + '"/></marker>').join('') + '</defs>';
+            }
+            function svg(W, H, body, cls) {
+                return '<svg class="' + cls + '" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' + body + '</svg>';
+            }
+
+            // marker index per colour, so arrowheads match their wires
+            const PAL = [C.travel, C.elev, C.pitch, C.volt, C.plant, C.fb, C.ff, C.line];
+
+            function pidFull(anim) {
+                const id = 'pf', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c), anim }, o));
+                let s = defs(id, PAL);
+                // feedback buses (measured outputs)
+                s += w([[805, 112], [805, 26], [395, 26], [395, 81]], C.fb, { dash: true, anim: false });
+                s += w([[395, 26], [104, 26], [104, 81]], C.fb, { dash: true, anim: false });
+                s += text(600, 20, 'measured φ', { size: 11, fill: C.sub }) + text(250, 20, 'measured ψ', { size: 11, fill: C.sub });
+                s += w([[805, 168], [805, 282], [104, 282], [104, 199]], C.fb, { dash: true, anim: false });
+                s += text(560, 298, 'measured θ   (the D terms act on the measured rates ψ̇, θ̇, φ̇)', { size: 11, fill: C.sub });
+                // travel -> pitch reference -> cyclic voltage
+                s += chip(18, 90, 50, C.travel, 'ψ_r') + w([[68, 90], [93, 90]], C.travel);
+                s += sum(104, 90, { w: '+', n: '−' });
+                s += w([[113, 90], [134, 90]], C.travel) + text(123, 106, 'e_ψ', { size: 11, fill: C.travel });
+                s += box(136, 68, 116, 44, C.travel, 'Travel PID', '−C_ψ(s)');
+                s += w([[252, 90], [276, 90]], C.travel);
+                s += box(278, 72, 66, 36, C.travel, 'sat', '±20°', { s1: 11.5 });
+                s += w([[344, 90], [384, 90]], C.pitch) + text(364, 82, 'φ_r', { size: 11.5, weight: 600, fill: C.pitch });
+                s += sum(395, 90, { w: '+', n: '−' });
+                s += w([[404, 90], [426, 90]], C.pitch);
+                s += box(428, 68, 110, 44, C.pitch, 'Pitch PD', '½ C_φ(s)');
+                s += w([[538, 90], [588, 90], [588, 112], [604, 112]], C.volt) + text(563, 82, 'V_{cyc}', { size: 11.5, weight: 600, fill: C.volt });
+                // elevation -> collective voltage
+                s += chip(18, 190, 50, C.elev, 'θ_r') + w([[68, 190], [93, 190]], C.elev);
+                s += sum(104, 190, { w: '+', s: '−' });
+                s += w([[113, 190], [134, 190]], C.elev) + text(123, 179, 'e_θ', { size: 11, fill: C.elev });
+                s += box(136, 168, 116, 44, C.elev, 'Elevation PID', '½ C_θ(s)');
+                s += w([[252, 190], [384, 190]], C.elev);
+                s += box(330, 226, 130, 40, C.ff, 'Hover feedforward', 'V_op(θ, φ)', { s1: 11.5 });
+                s += w([[395, 226], [395, 201]], C.ff);
+                s += sum(395, 190, { w: '+', s: '+' });
+                s += w([[404, 190], [588, 190], [588, 168], [604, 168]], C.volt) + text(563, 182, 'V_{coll}', { size: 11.5, weight: 600, fill: C.volt });
+                // mixer and plant
+                s += '<rect x="606" y="92" width="118" height="96" rx="8" fill="' + C.volt + '12" stroke="' + C.volt + '" stroke-width="1.6"/>';
+                s += text(665, 114, 'Mixer', { size: 12.5, weight: 600, fill: C.volt });
+                s += text(665, 138, 'V_f = V_{coll} + V_{cyc}', { size: 11, fill: C.sub }) + text(665, 156, 'V_b = V_{coll} − V_{cyc}', { size: 11, fill: C.sub });
+                s += text(665, 176, '|V| ≤ V_{max}', { size: 10.5, fill: C.sub });
+                s += w([[724, 140], [738, 140]], C.volt);
+                s += box(740, 112, 130, 56, C.plant, '3-DOF helicopter', 'θ, φ, ψ');
+                return svg(884, 306, (anim ? '<style>.cd-flow{animation:cdflow .9s linear infinite}@keyframes cdflow{to{stroke-dashoffset:-18.2}}</style>' : '') + s, 'cd-full');
+            }
+
+            function lqrFull(anim) {
+                const id = 'lf', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c), anim }, o));
+                let s = defs(id, PAL);
+                // feedback bus
+                s += w([[790, 168], [790, 272], [104, 272], [104, 149]], C.fb, { dash: true, anim: false });
+                s += text(240, 266, 'measured θ, ψ', { size: 11, fill: C.sub });
+                s += w([[360, 272], [360, 229]], C.fb, { dash: true, anim: false });
+                s += text(470, 266, 'measured φ and rates θ̇, φ̇, ψ̇', { size: 11, fill: C.sub });
+                // references and errors
+                s += chip(14, 140, 62, C.ink, 'θ_r, ψ_r') + w([[76, 140], [93, 140]], C.line);
+                s += sum(104, 140, { w: '−', s: '+' });
+                s += w([[113, 140], [306, 140]], C.line) + text(135, 132, 'e', { size: 11.5, weight: 600, fill: C.line });
+                s += w([[150, 140], [150, 196], [176, 196]], C.line, { arrow: true });
+                s += box(178, 178, 108, 36, C.line, '∫ e dt', 'clamped', { s1: 12 });
+                s += w([[286, 196], [306, 196]], C.line);
+                // z stack
+                s += '<rect x="308" y="54" width="104" height="174" rx="8" fill="#f8fafc" stroke="' + C.line + '" stroke-width="1.4"/>';
+                s += text(360, 72, 'z (8 states)', { size: 11.5, weight: 600, fill: C.line });
+                ['e_θ = θ − θ_r', 'φ', 'e_ψ = ψ − ψ_r', 'θ̇', 'φ̇', 'ψ̇', '∫e_θ', '∫e_ψ'].forEach((t, i) => { s += text(360, 92 + i * 17.5, t, { size: 11, fill: C.sub }); });
+                s += w([[412, 140], [438, 140]], C.pitch);
+                s += box(440, 112, 126, 56, C.pitch, 'State feedback', '−K z   (K: 2×8)');
+                s += text(503, 186, 'K from Q, R (Riccati)', { size: 10.5, fill: C.sub, italic: true });
+                s += w([[566, 140], [610, 140]], C.volt);
+                s += box(556, 30, 130, 40, C.ff, 'Hover feedforward', 'V_op(θ, φ)', { s1: 11.5 });
+                s += w([[621, 70], [621, 130]], C.ff);
+                s += sum(621, 140, { w: '+', n: '+' });
+                s += w([[630, 140], [674, 140]], C.volt) + text(652, 158, 'V_f, V_b', { size: 11, weight: 600, fill: C.volt });
+                s += box(676, 112, 130, 56, C.plant, '3-DOF helicopter', '|V| ≤ V_{max}');
+                return svg(820, 290, (anim ? '<style>.cd-flow{animation:cdflow .9s linear infinite}@keyframes cdflow{to{stroke-dashoffset:-18.2}}</style>' : '') + s, 'cd-full');
+            }
+
+            function pidCompact() {
+                const id = 'pc', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c) }, o));
+                let s = defs(id, PAL);
+                s += text(62, 13, 'ψ_r', { size: 12, weight: 600, fill: C.travel }) + w([[62, 17], [62, 30]], C.travel);
+                s += text(178, 13, 'θ_r', { size: 12, weight: 600, fill: C.elev }) + w([[178, 17], [178, 30]], C.elev);
+                s += box(14, 32, 96, 40, C.travel, 'Travel PID', 'C_ψ → φ_r', { s1: 11.5 });
+                s += box(130, 32, 96, 40, C.elev, 'Elevation PID', 'C_θ + V_{op}', { s1: 11 });
+                s += w([[62, 72], [62, 92]], C.pitch) + text(68, 87, 'φ_r ≤ 20°', { size: 10, anchor: 'start', fill: C.pitch });
+                s += box(14, 94, 96, 40, C.pitch, 'Pitch PD', 'C_φ', { s1: 11.5 });
+                s += w([[62, 134], [62, 156]], C.volt) + text(68, 149, 'V_{cyc}', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += w([[178, 72], [178, 156]], C.volt) + text(184, 149, 'V_{coll}', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += box(14, 158, 212, 38, C.volt, 'Mixer', 'V_{f,b} = V_{coll} ± V_{cyc}');
+                s += w([[120, 196], [120, 214]], C.volt);
+                s += box(14, 216, 212, 34, C.plant, '3-DOF helicopter', null);
+                s += w([[14, 233], [5, 233], [5, 52], [12, 52]], C.fb, { dash: true }) + w([[5, 114], [12, 114]], C.fb, { dash: true });
+                s += w([[226, 233], [235, 233], [235, 52], [228, 52]], C.fb, { dash: true });
+                s += text(120, 266, 'dashed: measured θ, φ, ψ and rates', { size: 10, fill: C.sub, italic: true });
+                return svg(240, 272, s, 'cd-compact');
+            }
+
+            function lqrCompact() {
+                const id = 'lc', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c) }, o));
+                let s = defs(id, PAL);
+                s += text(120, 13, 'θ_r, ψ_r', { size: 12, weight: 600, fill: C.ink }) + w([[120, 17], [120, 30]], C.line);
+                s += box(14, 32, 212, 40, C.line, 'Errors + integrators', 'e_θ, e_ψ, ∫e_θ, ∫e_ψ');
+                s += w([[120, 72], [120, 92]], C.line) + text(126, 87, 'z (8 states)', { size: 10, anchor: 'start', fill: C.sub });
+                s += box(14, 94, 212, 40, C.pitch, 'State feedback', 'u = V_{op}(θ, φ) − K z');
+                s += w([[120, 134], [120, 156]], C.volt) + text(126, 149, 'V_f, V_b', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += box(14, 158, 212, 34, C.plant, '3-DOF helicopter', null);
+                s += w([[14, 175], [5, 175], [5, 52], [12, 52]], C.fb, { dash: true }) + w([[5, 114], [12, 114]], C.fb, { dash: true });
+                s += text(120, 210, 'K from Q, R (Riccati)', { size: 10, fill: C.sub, italic: true });
+                s += text(120, 226, 'dashed: measured θ, φ, ψ and rates', { size: 10, fill: C.sub, italic: true });
+                return svg(240, 234, s, 'cd-compact');
+            }
+
+            return {
+                svg(type, anim) { return type === 'lqr' ? lqrCompact() + lqrFull(anim) : pidCompact() + pidFull(anim); }
+            };
+        })();
+
         function getControllerDiagramSVG(controllerType, animateSignals) {
-            const baseStyle = 'font-family: Inter, sans-serif;';
-            const signalClass = animateSignals ? ' class="signal"' : '';
-            const signalStyle = animateSignals
-                ? '<style>.signal{stroke-dasharray:6 4;animation:flow 0.8s linear infinite;}@keyframes flow{to{stroke-dashoffset:-20;}}</style>'
-                : '';
-
-            if (controllerType === 'lqr') {
-                return (
-                    '<svg viewBox="0 0 380 190" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">' +
-                        '<defs>' +
-                            '<marker id="arrow-lqr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">' +
-                                '<path d="M0,0 L8,4 L0,8 Z" fill="#0f766e" />' +
-                            '</marker>' +
-                        '</defs>' +
-                        signalStyle +
-                        '<rect x="18" y="70" width="78" height="34" rx="6" fill="#eff6ff" stroke="#3b82f6" />' +
-                        '<text x="57" y="90" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#1e3a8a">r(t)</text>' +
-                        '<circle cx="122" cy="87" r="13" fill="#ffffff" stroke="#0ea5e9" stroke-width="2" />' +
-                        '<text x="118" y="91" font-size="12" style="' + baseStyle + '" fill="#0369a1">+</text>' +
-                        '<text x="124" y="102" font-size="12" style="' + baseStyle + '" fill="#ef4444">-</text>' +
-                        '<rect x="148" y="70" width="78" height="34" rx="6" fill="#f5f3ff" stroke="#8b5cf6" />' +
-                        '<text x="187" y="88" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#5b21b6">u = -Kx</text>' +
-                        '<text x="187" y="99" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#5b21b6">(state feedback)</text>' +
-                        '<rect x="248" y="70" width="108" height="34" rx="6" fill="#ecfeff" stroke="#06b6d4" />' +
-                        '<text x="302" y="88" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#155e75">x_dot = Ax + Bu</text>' +
-                        '<text x="302" y="99" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#155e75">y = Cx</text>' +
-                        '<rect x="248" y="128" width="108" height="30" rx="6" fill="#f0fdf4" stroke="#22c55e" />' +
-                        '<text x="302" y="146" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#166534">Observer / States</text>' +
-                        '<text x="302" y="156" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#166534">x = [psi,theta,phi,...]</text>' +
-                        '<line' + signalClass + ' x1="96" y1="87" x2="109" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-lqr)" />' +
-                        '<line' + signalClass + ' x1="135" y1="87" x2="148" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-lqr)" />' +
-                        '<line' + signalClass + ' x1="226" y1="87" x2="248" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-lqr)" />' +
-                        '<line' + signalClass + ' x1="356" y1="87" x2="370" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-lqr)" />' +
-                        '<text x="371" y="84" font-size="10" style="' + baseStyle + '" fill="#334155">y</text>' +
-                        '<path d="M356 87 L370 87 L370 170 L122 170 L122 100" fill="none" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-lqr)" />' +
-                        '<line x1="302" y1="128" x2="302" y2="104" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-lqr)" />' +
-                        '<text x="18" y="26" font-size="10" style="' + baseStyle + '" fill="#475569">LQR canonical form: minimize J = Integral (x^T Q x + u^T R u) dt</text>' +
-                        '<text x="18" y="42" font-size="10" style="' + baseStyle + '" fill="#475569">Control law: u = -Kx (with equilibrium/feedforward terms)</text>' +
-                    '</svg>'
-                );
-            }
-
-            if (controllerType === 'mpc') {
-                return (
-                    '<svg viewBox="0 0 380 190" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">' +
-                        '<defs>' +
-                            '<marker id="arrow-mpc" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">' +
-                                '<path d="M0,0 L8,4 L0,8 Z" fill="#0f766e" />' +
-                            '</marker>' +
-                        '</defs>' +
-                        signalStyle +
-                        '<rect x="16" y="72" width="88" height="34" rx="6" fill="#eff6ff" stroke="#3b82f6" />' +
-                        '<text x="60" y="92" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#1e3a8a">x(k), r(k)</text>' +
-                        '<rect x="122" y="72" width="116" height="34" rx="6" fill="#f5f3ff" stroke="#8b5cf6" />' +
-                        '<text x="180" y="89" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#5b21b6">Optimizer</text>' +
-                        '<text x="180" y="100" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#5b21b6">arg min J over N</text>' +
-                        '<rect x="258" y="72" width="96" height="34" rx="6" fill="#ecfeff" stroke="#06b6d4" />' +
-                        '<text x="306" y="89" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#155e75">Plant</text>' +
-                        '<text x="306" y="100" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#155e75">x(k+1)=f(x,u)</text>' +
-                        '<rect x="258" y="126" width="96" height="30" rx="6" fill="#f0fdf4" stroke="#22c55e" />' +
-                        '<text x="306" y="144" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#166534">State estimator</text>' +
-                        '<line' + signalClass + ' x1="104" y1="89" x2="122" y2="89" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-mpc)" />' +
-                        '<line' + signalClass + ' x1="238" y1="89" x2="258" y2="89" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-mpc)" />' +
-                        '<line x1="306" y1="126" x2="306" y2="106" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-mpc)" />' +
-                        '<path d="M354 89 L368 89 L368 170 L60 170 L60 106" fill="none" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-mpc)" />' +
-                        '<text x="18" y="24" font-size="10" style="' + baseStyle + '" fill="#475569">MPC problem: min Sum((y-r)^T Q (y-r) + Delta u^T R Delta u) + terminal cost</text>' +
-                        '<text x="18" y="39" font-size="10" style="' + baseStyle + '" fill="#475569">s.t. x(i+1)=f(x(i),u(i)),  u_min <= u(i) <= u_max,  x in X</text>' +
-                        '<text x="18" y="54" font-size="10" style="' + baseStyle + '" fill="#475569">Receding horizon: apply first control move, shift horizon, repeat</text>' +
-                    '</svg>'
-                );
-            }
-
-            return (
-                '<svg viewBox="0 0 380 190" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">' +
-                    '<defs>' +
-                        '<marker id="arrow-pid" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">' +
-                            '<path d="M0,0 L8,4 L0,8 Z" fill="#0f766e" />' +
-                        '</marker>' +
-                    '</defs>' +
-                    signalStyle +
-                    '<rect x="16" y="72" width="56" height="30" rx="6" fill="#eff6ff" stroke="#3b82f6" />' +
-                    '<text x="44" y="90" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#1e3a8a">r(t)</text>' +
-                    '<circle cx="92" cy="87" r="12" fill="#ffffff" stroke="#0ea5e9" stroke-width="2" />' +
-                    '<text x="88" y="91" font-size="12" style="' + baseStyle + '" fill="#0369a1">+</text>' +
-                    '<text x="94" y="101" font-size="12" style="' + baseStyle + '" fill="#ef4444">-</text>' +
-                    '<rect x="112" y="70" width="78" height="34" rx="6" fill="#f5f3ff" stroke="#8b5cf6" />' +
-                    '<text x="151" y="89" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#5b21b6">C(s)</text>' +
-                    '<text x="151" y="100" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#5b21b6">PID</text>' +
-                    '<rect x="210" y="70" width="92" height="34" rx="6" fill="#ecfeff" stroke="#06b6d4" />' +
-                    '<text x="256" y="88" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#155e75">G(s)</text>' +
-                    '<text x="256" y="99" text-anchor="middle" font-size="9" style="' + baseStyle + '" fill="#155e75">3-DOF plant</text>' +
-                    '<rect x="320" y="70" width="42" height="34" rx="6" fill="#f0fdf4" stroke="#22c55e" />' +
-                    '<text x="341" y="90" text-anchor="middle" font-size="10" style="' + baseStyle + '" fill="#166534">y</text>' +
-                    '<line' + signalClass + ' x1="72" y1="87" x2="80" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-pid)" />' +
-                    '<line' + signalClass + ' x1="104" y1="87" x2="112" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-pid)" />' +
-                    '<line' + signalClass + ' x1="190" y1="87" x2="210" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-pid)" />' +
-                    '<line' + signalClass + ' x1="302" y1="87" x2="320" y2="87" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow-pid)" />' +
-                    '<path d="M362 87 L372 87 L372 168 L92 168 L92 99" fill="none" stroke="#64748b" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrow-pid)" />' +
-                    '<text x="20" y="24" font-size="10" style="' + baseStyle + '" fill="#475569">Equivalent loop notation; implementation uses cascaded PID channels for psi/theta/phi.</text>' +
-                    '<text x="20" y="40" font-size="10" style="' + baseStyle + '" fill="#475569">C(s)=Kp + Ki/s + Kd s,  e(t)=r(t)-y(t),  u(t)=C(s)e(t)</text>' +
-                '</svg>'
-            );
+            return CD.svg(controllerType, animateSignals);
         }
 
+        // Equations: short forms for the panel, complete forms (matching sim-core.js) for the enlarged view
         function getControllerEquations(controllerType) {
             if (controllerType === 'lqr') {
-                return [
-                    String.raw`x=\begin{bmatrix}\psi&\theta&\phi&\dot\psi&\dot\theta&\dot\phi\end{bmatrix}^{\top},\quad \dot{x}=Ax+Bu,\quad y=Cx`,
-                    String.raw`u=V_{op}(\theta,\phi)\mathbf{1}-K z,\quad z=\begin{bmatrix}\theta-\theta_r&\phi&\psi-\psi_r&\dot\theta&\dot\phi&\dot\psi&\int\! e_\theta&\int\! e_\psi\end{bmatrix}^{\top}`,
-                    String.raw`V_f=V_{\mathrm{coll}}+V_{\mathrm{cyc}},\quad V_b=V_{\mathrm{coll}}-V_{\mathrm{cyc}}`,
-                    String.raw`J=\int_0^{\infty}\!\left(z^{\top}Qz+\tilde u^{\top}R\tilde u\right)dt,\quad V_{op}=\frac{mg\cos\theta}{2K_f\cos\phi}`
-                ];
+                return {
+                    compact: [
+                        String.raw`u=V_{op}(\theta,\phi)\,\mathbf 1-Kz`,
+                        String.raw`J=\int\!\left(z^{\top}Qz+\tilde u^{\top}R\tilde u\right)dt`,
+                        String.raw`\begin{bmatrix}V_f\\V_b\end{bmatrix}=u,\ \ |V|\le V_{\max}`
+                    ],
+                    full: [
+                        String.raw`z=\begin{bmatrix}\theta-\theta_r&\phi&\psi-\psi_r&\dot\theta&\dot\phi&\dot\psi&\int\!(\theta-\theta_r)\,dt&\int\!(\psi-\psi_r)\,dt\end{bmatrix}^{\top}`,
+                        String.raw`\begin{bmatrix}V_f\\V_b\end{bmatrix}=V_{op}(\theta,\phi)\begin{bmatrix}1\\1\end{bmatrix}-Kz,\qquad V_{op}(\theta,\phi)=\frac{m g\cos\theta}{2K_f\cos\phi}`,
+                        String.raw`K=R^{-1}B^{\top}P,\quad A^{\top}P+PA-PBR^{-1}B^{\top}P+Q=0,\quad J=\int_0^{\infty}\!\left(z^{\top}Qz+\tilde u^{\top}R\tilde u\right)dt`,
+                        String.raw`\text{integrators clamped},\quad |V_f|,|V_b|\le V_{\max}`
+                    ]
+                };
             }
-
-            if (controllerType === 'mpc') {
-                return [
-                    String.raw`\begin{aligned}\mathbf{U}_k^{\star}=\arg\min_{\mathbf{U}_k}\sum_{i=0}^{N-1}\Big(&\lVert x_{k+i|k}-x_{\mathrm{ref}}\rVert_Q^2 \\&+\lVert u_{k+i|k}-u_{\mathrm{ref}}\rVert_R^2+\lVert \Delta u_{k+i|k}\rVert_S^2\Big)+\lVert x_{k+N|k}-x_{\mathrm{ref}}\rVert_P^2\end{aligned}`,
-                    String.raw`\begin{aligned}x_{k+i+1|k}&=f\!\left(x_{k+i|k},u_{k+i|k}\right),\\x_{k+i|k}&\in\mathcal{X},\quad u_{k+i|k}\in\mathcal{U},\quad \Delta u_{k+i|k}\in\Delta\mathcal{U}\end{aligned}`,
-                    String.raw`u_k=u_{k|k}^{\star},\quad \begin{bmatrix}V_f\\V_b\end{bmatrix}=\begin{bmatrix}V_{\mathrm{coll}}+V_{\mathrm{cyc}}\\V_{\mathrm{coll}}-V_{\mathrm{cyc}}\end{bmatrix}\ \text{(receding horizon)}`
-                ];
-            }
-
-            return [
-                String.raw`e_{\psi}=\psi_r-\psi,\quad e_{\theta}=\theta_r-\theta,\quad \phi_r=-C_{\psi}(s)e_{\psi},\quad V_{\mathrm{coll}}=V_{op}(\theta,\phi)+\tfrac12 C_{\theta}(s)e_{\theta}`,
-                String.raw`V_{\mathrm{cyc}}=\tfrac12 C_{\phi}(s)(\phi_r-\phi),\ |\phi_r|\le 20^\circ,\quad \begin{bmatrix}V_f\\V_b\end{bmatrix}=\begin{bmatrix}V_{\mathrm{coll}}+V_{\mathrm{cyc}}\\V_{\mathrm{coll}}-V_{\mathrm{cyc}}\end{bmatrix}`,
-                String.raw`C_i(s)=K_{p,i}+\frac{K_{i,i}}{s}+K_{d,i}s,\quad i\in\{\psi,\theta,\phi\}`
-            ];
+            return {
+                compact: [
+                    String.raw`\phi_r=\mathrm{sat}_{20^\circ}\!\left(-C_\psi e_\psi\right)`,
+                    String.raw`V_{\mathrm{coll}}=V_{op}+\tfrac12 C_\theta e_\theta`,
+                    String.raw`V_{\mathrm{cyc}}=\tfrac12 C_\phi(\phi_r-\phi)`,
+                    String.raw`V_{f,b}=V_{\mathrm{coll}}\pm V_{\mathrm{cyc}}`
+                ],
+                full: [
+                    String.raw`e_\psi=\psi_r-\psi,\qquad e_\theta=\theta_r-\theta`,
+                    String.raw`\phi_r=\mathrm{sat}_{\pm20^\circ}\!\left[-\left(K_{p,\psi}e_\psi+K_{i,\psi}\!\int\! e_\psi\,dt-K_{d,\psi}\dot\psi\right)\right]`,
+                    String.raw`V_{\mathrm{coll}}=V_{op}(\theta,\phi)+\tfrac12\left(K_{p,\theta}e_\theta+K_{i,\theta}\!\int\! e_\theta\,dt-K_{d,\theta}\dot\theta\right),\quad V_{op}=\frac{m g\cos\theta}{2K_f\cos\phi}`,
+                    String.raw`V_{\mathrm{cyc}}=\tfrac12\left(K_{p,\phi}(\phi_r-\phi)-K_{d,\phi}\dot\phi\right)`,
+                    String.raw`V_f=V_{\mathrm{coll}}+V_{\mathrm{cyc}},\quad V_b=V_{\mathrm{coll}}-V_{\mathrm{cyc}},\quad |V|\le V_{\max}`
+                ]
+            };
         }
 
         function updateControlEquations() {
             if (!ui.controlDiagramEquations) return;
-
-            const equations = getControllerEquations(state.controllerType);
-            if (window.katex) {
-                ui.controlDiagramEquations.innerHTML = equations
-                    .map((eq) => window.katex.renderToString(eq, { displayMode: true, throwOnError: false }))
-                    .join('');
-            } else {
-                ui.controlDiagramEquations.textContent = equations.join(' | ');
-            }
+            const eq = getControllerEquations(state.controllerType);
+            const render = (list, cls) => '<div class="' + cls + '">' + list.map((e) => window.katex
+                ? window.katex.renderToString(e, { displayMode: true, throwOnError: false })
+                : '<div>' + e + '</div>').join('') + '</div>';
+            ui.controlDiagramEquations.innerHTML = render(eq.compact, 'cd-eq-compact') + render(eq.full, 'cd-eq-full') +
+                '<div class="cd-hint">Click to enlarge for the full diagram and equations</div>';
         }
 
         function updateControlDiagram() {
