@@ -81,8 +81,10 @@
         .right-panel {
             position: absolute;
             top: 14px; right: 14px; bottom: 34px;
-            width: 230px;
+            width: 244px;
             overflow-y: auto;
+            overflow-x: hidden;           /* never scroll sideways */
+            scrollbar-gutter: stable;     /* room for a classic (Windows) scrollbar without squeezing the cards */
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -356,6 +358,13 @@
         .studio-tabs::-webkit-scrollbar { display: none; }
         .studio-tab { white-space: nowrap; flex: 0 0 auto; }
         .studio-actions button { white-space: nowrap; }
+        /* info tooltips: the in-panel copies are only templates; one floating tip shows above everything */
+        .lab-tip-src { display: none !important; }
+        #lab-tip { position: fixed; z-index: 400; max-width: min(300px, calc(100vw - 16px)); pointer-events: none;
+            border: 1px solid #e2e8f0; background: rgba(255,255,255,.97); border-radius: 10px; padding: 8px 10px;
+            font-size: 13px; line-height: 1.35; color: #475569; box-shadow: 0 10px 28px rgba(15,23,42,.18);
+            opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
+        #lab-tip.show { opacity: 1; transform: none; }
         @media (max-width: 1200px) { #lab-toolbar .lab-title { display: none; } }
         @media (max-width: 1100px) {
             #studio-body .grid-cols-4, #studio-body .grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1809,7 +1818,36 @@
             labSyncButtons(); labFit(false);
             setTimeout(() => window.dispatchEvent(new Event('resize')), 280);   // let plots re-measure after the slide
         }
+        function labInitTips() {
+            // Panel tooltips used to be absolutely positioned inside the scrolling panel: they were clipped and,
+            // even when invisible, widened the panel (horizontal scrollbar). Show them in one fixed element instead.
+            const tip = document.createElement('div'); tip.id = 'lab-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip);
+            let current = null;
+            const place = (anchor) => {
+                const a = anchor.getBoundingClientRect(), t = tip.getBoundingClientRect(), W = window.innerWidth;
+                let x = Math.min(Math.max(8, a.left + a.width / 2 - t.width / 2), W - t.width - 8);
+                let y = a.top - t.height - 8;
+                if (y < 8) y = a.bottom + 8;
+                tip.style.left = x + 'px'; tip.style.top = y + 'px';
+            };
+            const show = (src, anchor) => { current = anchor; tip.innerHTML = src.innerHTML; tip.style.width = src.classList.contains('w-72') ? '288px' : '224px'; tip.classList.add('show'); place(anchor); };
+            const hide = () => { current = null; tip.classList.remove('show'); };
+            document.querySelectorAll('#ui-layer .group > div.bottom-full').forEach(src => {
+                src.classList.add('lab-tip-src');
+                const group = src.parentElement;
+                const anchor = group.querySelector('.cursor-help') || group;
+                anchor.setAttribute('tabindex', '0'); anchor.setAttribute('aria-label', 'More information');
+                group.addEventListener('mouseenter', () => show(src, anchor));
+                group.addEventListener('mouseleave', hide);
+                anchor.addEventListener('focus', () => show(src, anchor));
+                anchor.addEventListener('blur', hide);
+                anchor.addEventListener('click', (e) => { e.stopPropagation(); current === anchor ? hide() : show(src, anchor); });   // touch screens
+            });
+            document.addEventListener('click', hide);
+            document.querySelectorAll('.right-panel, .left-panel').forEach(p => p.addEventListener('scroll', hide));
+        }
         function labInitLayout() {
+            labInitTips();
             const W = window.innerWidth, b = document.body;
             if (W <= 700) { b.classList.add('hide-left', 'hide-right'); }
             else if (W < 1100) { b.classList.add('hide-left'); }

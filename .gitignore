@@ -1,4 +1,4 @@
-# This folder is the GitHub repo and the Cloudflare Pages site.
+# This folder is the GitHub repo, served by GitHub Pages.
 # Whitelist: only the stand-alone app is committed and deployed; everything else stays local.
 *
 !.gitignore
@@ -8,3 +8,5 @@
 !sim-design.js
 !studio.js
 !tutor-core.js
+!docs/
+!docs/*.png
