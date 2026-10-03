@@ -763,7 +763,25 @@
     }
 
     // ------------------------------------------------------------------ plotting (canvas, stacked panels)
+    // The canvas bitmap is sized from the canvas's on-screen size. On the first visit to a tab, the Tailwind
+    // CDN has not yet generated CSS for that tab's classes (w-full, grid-cols-4, col-span-3, ...) when we draw,
+    // so the size read here is wrong and the bitmap is then stretched once the CSS lands. Redraw whenever the
+    // canvas's displayed size changes, so the plot always matches its box.
     function plot(cv, series, labels, opt = {}) {
+        cv._plotArgs = [series, labels, opt];
+        drawPlot(cv, series, labels, opt);
+        if (!cv._ro && window.ResizeObserver) {
+            let lw = cv.clientWidth, lh = cv.clientHeight;
+            cv._ro = new ResizeObserver(() => {
+                if (!cv.isConnected) { cv._ro.disconnect(); return; }
+                if (cv.clientWidth === lw && cv.clientHeight === lh) return;
+                lw = cv.clientWidth; lh = cv.clientHeight;
+                drawPlot(cv, ...cv._plotArgs);
+            });
+            cv._ro.observe(cv);
+        }
+    }
+    function drawPlot(cv, series, labels, opt = {}) {
         const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 800, Hh = cv.clientHeight || 300;
         cv.width = W * dpr; cv.height = Hh * dpr;
         const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, Hh);
