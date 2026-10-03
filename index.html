@@ -12,6 +12,7 @@
     <script src="sim-core.js"></script>
     <script src="sim-design.js"></script>
     <script src="tutor-core.js"></script>
+    <script src="math-ui.js"></script>
     <script src="studio.js"></script>
     <script>
         tailwind.config = {
@@ -444,15 +445,15 @@
             <div class="interactive-panel rounded-xl px-4 py-3 shadow-lg border-l-4 border-l-blue-500">
                 <div class="space-y-1.5 font-mono text-sm">
                     <div class="flex justify-between items-center">
-                        <span class="text-slate-500"><span class="font-bold text-blue-500">ψ</span> Travel</span>
+                        <span class="text-slate-500"><span class="font-bold text-blue-500"><span data-tex="\psi">ψ</span></span> Travel</span>
                         <span id="tele-travel" class="text-sm text-slate-800 font-semibold">0.0°</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-slate-500"><span class="font-bold text-amber-500">θ</span> Elevation</span>
+                        <span class="text-slate-500"><span class="font-bold text-amber-500"><span data-tex="\theta">θ</span></span> Elevation</span>
                         <span id="tele-elevation" class="text-sm text-slate-800 font-semibold">0.0°</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-slate-500"><span class="font-bold text-violet-500">φ</span> Pitch</span>
+                        <span class="text-slate-500"><span class="font-bold text-violet-500"><span data-tex="\phi">φ</span></span> Pitch</span>
                         <span id="tele-pitch" class="text-sm text-slate-800 font-semibold">0.0°</span>
                     </div>
                 </div>
@@ -474,23 +475,23 @@
                     </span>
                 </div>
                 <div class="plot-block">
-                    <div class="panel-heading panel-heading-semibold text-blue-500 mb-0.5">ψ Travel</div>
+                    <div class="panel-heading panel-heading-semibold text-blue-500 mb-0.5"><span data-tex="\psi">ψ</span> Travel</div>
                     <canvas id="plot-travel" role="img" aria-label="Travel angle psi versus time, actual and setpoint. Values are shown in the telemetry above and can be exported as CSV."></canvas>
                 </div>
                 <div class="plot-block">
-                    <div class="panel-heading panel-heading-semibold text-amber-500 mb-0.5">θ Elevation</div>
+                    <div class="panel-heading panel-heading-semibold text-amber-500 mb-0.5"><span data-tex="\theta">θ</span> Elevation</div>
                     <canvas id="plot-elevation" role="img" aria-label="Elevation angle theta versus time, actual and setpoint."></canvas>
                 </div>
                 <div class="plot-block">
-                    <div class="panel-heading panel-heading-semibold text-violet-500 mb-0.5">φ Pitch</div>
+                    <div class="panel-heading panel-heading-semibold text-violet-500 mb-0.5"><span data-tex="\phi">φ</span> Pitch</div>
                     <canvas id="plot-pitch" role="img" aria-label="Pitch angle phi versus time, actual and setpoint."></canvas>
                 </div>
                 <div class="plot-block">
-                    <div class="panel-heading panel-heading-semibold text-emerald-600 mb-0.5">V<sub>f</sub> Front Motor (V<sub>coll</sub> + V<sub>cyc</sub>)</div>
+                    <div class="panel-heading panel-heading-semibold text-emerald-600 mb-0.5"><span data-tex="V_f">V<sub>f</sub></span> Front Motor (<span data-tex="V_{\mathrm{coll}} + V_{\mathrm{cyc}}">V<sub>coll</sub> + V<sub>cyc</sub></span>)</div>
                     <canvas id="plot-motor1" role="img" aria-label="Front motor voltage versus time."></canvas>
                 </div>
                 <div class="plot-block">
-                    <div class="panel-heading panel-heading-semibold text-rose-500 mb-0.5">V<sub>b</sub> Back Motor (V<sub>coll</sub> - V<sub>cyc</sub>)</div>
+                    <div class="panel-heading panel-heading-semibold text-rose-500 mb-0.5"><span data-tex="V_b">V<sub>b</sub></span> Back Motor (<span data-tex="V_{\mathrm{coll}} - V_{\mathrm{cyc}}">V<sub>coll</sub> − V<sub>cyc</sub></span>)</div>
                     <canvas id="plot-motor2" role="img" aria-label="Back motor voltage versus time."></canvas>
                 </div>
             </div>
@@ -531,20 +532,20 @@
                     </div>
                     <div>
                         <div class="flex justify-between text-sm font-semibold text-slate-500 mb-1">
-                            <span>ψ Target Travel</span>
+                            <span><span data-tex="\psi_r">ψ</span> Target Travel</span>
                             <span id="val-target-travel" class="text-indigo-700">0°</span>
                         </div>
                         <input type="range" id="slider-target-travel" aria-label="Target travel (degrees)" aria-valuetext="0 degrees" min="-180" max="180" value="0" step="1">
                     </div>
                     <div>
                         <div class="flex justify-between text-sm font-semibold text-slate-500 mb-1">
-                            <span>θ Target Elevation</span>
+                            <span><span data-tex="\theta_r">θ</span> Target Elevation</span>
                             <span id="val-target-elev" class="text-indigo-700">-25°</span>
                         </div>
                         <input type="range" id="slider-target-elev" aria-label="Target elevation (degrees)" aria-valuetext="-25 degrees" min="-25" max="34" value="-25" step="1">
                     </div>
                     <button id="btn-random-targets" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-sm font-semibold rounded p-1.5 transition-colors">
-                        <i class="fa-solid fa-dice mr-1"></i> Random ψ/θ Targets
+                        <i class="fa-solid fa-dice mr-1"></i> Random <span data-tex="\psi_r/\theta_r">ψ/θ</span> Targets
                     </button>
                 </div>
                 <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-center">
@@ -588,7 +589,7 @@
                         <span class="text-sm font-semibold text-slate-500">Show Dimensions</span>
                         <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-sm font-bold text-slate-600 cursor-help">i</span>
                         <div class="pointer-events-none absolute left-0 bottom-full mb-2 z-[120] w-56 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur px-2.5 py-2 text-sm leading-4 text-slate-600 shadow-xl opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
-                            Draws dimension lines on the model with parameter symbols and values (for example L_e and L_p).
+                            Draws dimension lines on the model with parameter symbols and values (for example <span data-tex="L_a">L<sub>a</sub></span> and <span data-tex="L_h">L<sub>h</sub></span>).
                         </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
@@ -602,14 +603,14 @@
             <div class="interactive-panel rounded-xl p-3 shadow-lg border-l-4 border-l-emerald-500">
                 <div class="flex justify-between items-center mb-2">
                     <div class="relative flex items-center gap-1.5 group">
-                        <span class="panel-heading text-emerald-700">Front Motor V<sub>f</sub></span>
+                        <span class="panel-heading text-emerald-700">Front Motor <span data-tex="V_f">V<sub>f</sub></span></span>
                         <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-sm font-bold text-slate-600 cursor-help">i</span>
                         <div class="pointer-events-none absolute left-0 bottom-full mb-2 z-[120] w-72 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur px-2.5 py-2 text-sm leading-5 text-slate-600 shadow-xl opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
                             <div class="font-semibold text-slate-700 mb-1">Voltage Decomposition</div>
-                            <div><span class="font-semibold text-emerald-700">V<sub>coll</sub></span>: collective (common-mode) voltage that raises/lowers total lift.</div>
-                            <div><span class="font-semibold text-emerald-700">V<sub>cyc</sub></span>: cyclic (differential) voltage that creates pitch/travel authority.</div>
-                            <div class="mt-1 font-mono text-slate-700">V<sub>f</sub> = V<sub>coll</sub> + V<sub>cyc</sub></div>
-                            <div class="font-mono text-slate-700">V<sub>b</sub> = V<sub>coll</sub> - V<sub>cyc</sub></div>
+                            <div><span class="font-semibold text-emerald-700"><span data-tex="V_{\mathrm{coll}}">V<sub>coll</sub></span></span>: collective (common-mode) voltage that raises/lowers total lift.</div>
+                            <div><span class="font-semibold text-emerald-700"><span data-tex="V_{\mathrm{cyc}}">V<sub>cyc</sub></span></span>: cyclic (differential) voltage that creates pitch/travel authority.</div>
+                            <div class="mt-1 text-slate-700"><span data-tex="V_f = V_{\mathrm{coll}} + V_{\mathrm{cyc}}">V<sub>f</sub> = V<sub>coll</sub> + V<sub>cyc</sub></span></div>
+                            <div class="text-slate-700"><span data-tex="V_b = V_{\mathrm{coll}} - V_{\mathrm{cyc}}">V<sub>b</sub> = V<sub>coll</sub> − V<sub>cyc</sub></span></div>
                         </div>
                     </div>
                     <span class="text-sm text-slate-400" aria-hidden="true">W / S</span>
@@ -623,14 +624,14 @@
             <div class="interactive-panel rounded-xl p-3 shadow-lg border-l-4 border-l-rose-500">
                 <div class="flex justify-between items-center mb-2">
                     <div class="relative flex items-center gap-1.5 group">
-                        <span class="panel-heading text-rose-700">Back Motor V<sub>b</sub></span>
+                        <span class="panel-heading text-rose-700">Back Motor <span data-tex="V_b">V<sub>b</sub></span></span>
                         <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-sm font-bold text-slate-600 cursor-help">i</span>
                         <div class="pointer-events-none absolute left-0 bottom-full mb-2 z-[120] w-72 rounded-lg border border-slate-200/80 bg-white/95 backdrop-blur px-2.5 py-2 text-sm leading-5 text-slate-600 shadow-xl opacity-0 translate-y-1 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0">
                             <div class="font-semibold text-slate-700 mb-1">Voltage Decomposition</div>
-                            <div><span class="font-semibold text-rose-700">V<sub>coll</sub></span>: collective (common-mode) voltage shared by both rotors.</div>
-                            <div><span class="font-semibold text-rose-700">V<sub>cyc</sub></span>: cyclic (difference-mode) voltage split across front/back rotors.</div>
-                            <div class="mt-1 font-mono text-slate-700">V<sub>f</sub> = V<sub>coll</sub> + V<sub>cyc</sub></div>
-                            <div class="font-mono text-slate-700">V<sub>b</sub> = V<sub>coll</sub> - V<sub>cyc</sub></div>
+                            <div><span class="font-semibold text-rose-700"><span data-tex="V_{\mathrm{coll}}">V<sub>coll</sub></span></span>: collective (common-mode) voltage shared by both rotors.</div>
+                            <div><span class="font-semibold text-rose-700"><span data-tex="V_{\mathrm{cyc}}">V<sub>cyc</sub></span></span>: cyclic (difference-mode) voltage split across front/back rotors.</div>
+                            <div class="mt-1 text-slate-700"><span data-tex="V_f = V_{\mathrm{coll}} + V_{\mathrm{cyc}}">V<sub>f</sub> = V<sub>coll</sub> + V<sub>cyc</sub></span></div>
+                            <div class="text-slate-700"><span data-tex="V_b = V_{\mathrm{coll}} - V_{\mathrm{cyc}}">V<sub>b</sub> = V<sub>coll</sub> − V<sub>cyc</sub></span></div>
                         </div>
                     </div>
                     <span class="text-sm text-slate-400" aria-hidden="true">↑ / ↓</span>
@@ -969,17 +970,18 @@
             canvas.height = 96;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = '700 54px serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = '#0f172a';
-            ctx.lineWidth = 8;
-            ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
-            ctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
-            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            const color = '#' + colorHex.toString(16).padStart(6, '0');
+            const draw = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (window.MathUI) { window.MathUI.drawText(ctx, text, canvas.width / 2, canvas.height / 2, { size: 54, weight: 700, align: 'center', baseline: 'middle', color, stroke: { color: '#0f172a', width: 8 } }); return; }
+                ctx.font = '700 54px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 8; ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+                ctx.fillStyle = color; ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            };
+            draw();
 
             const tex = new THREE.CanvasTexture(canvas);
+            window.addEventListener('mathui-fonts', () => { draw(); tex.needsUpdate = true; });
             tex.needsUpdate = true;
             const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
             const sprite = new THREE.Sprite(mat);
@@ -1018,16 +1020,18 @@
             canvas.height = 96;
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = '700 34px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
-            ctx.lineWidth = 8;
-            ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
-            ctx.fillStyle = '#' + colorHex.toString(16).padStart(6, '0');
-            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            const color = '#' + colorHex.toString(16).padStart(6, '0');
+            const draw = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (window.MathUI) { window.MathUI.drawText(ctx, text, canvas.width / 2, canvas.height / 2, { size: 34, weight: 700, align: 'center', baseline: 'middle', color, stroke: { color: 'rgba(15, 23, 42, 0.85)', width: 8 } }); return; }
+                ctx.font = '700 34px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)'; ctx.lineWidth = 8; ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+                ctx.fillStyle = color; ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            };
+            draw();
 
             const tex = new THREE.CanvasTexture(canvas);
+            window.addEventListener('mathui-fonts', () => { draw(); tex.needsUpdate = true; });
             tex.minFilter = THREE.LinearFilter;
             tex.magFilter = THREE.LinearFilter;
             const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
@@ -1068,7 +1072,7 @@
                 new THREE.Vector3(0, 0.9, -0.95),
                 new THREE.Vector3(geom.Le, 0.9, -0.95),
                 0x0ea5e9,
-                'L_a = ' + P.La.toFixed(3) + ' m',
+                '$L_a$ = ' + P.La.toFixed(3) + ' m',
                 new THREE.Vector3(0, 0.24, 0)
             );
 
@@ -1078,7 +1082,7 @@
                 new THREE.Vector3(0.12, 1.08, 0),
                 new THREE.Vector3(0.12, 1.08, geom.Lp),
                 0x10b981,
-                'L_h = ' + P.Lh.toFixed(3) + ' m',
+                '$L_h$ = ' + P.Lh.toFixed(3) + ' m',
                 new THREE.Vector3(0.22, 0.23, 0)
             );
 
@@ -1088,7 +1092,7 @@
                 new THREE.Vector3(geom.Le + 0.18, 1.35, -geom.Lp),
                 new THREE.Vector3(geom.Le + 0.18, 1.35, geom.Lp),
                 0x22c55e,
-                '2L_h = ' + (2 * P.Lh).toFixed(3) + ' m',
+                '$2L_h$ = ' + (2 * P.Lh).toFixed(3) + ' m',
                 new THREE.Vector3(0.28, 0.24, 0)
             );
 
@@ -1125,29 +1129,29 @@
                 'Mode: ' + modeTxt,
                 '',
                 'Physics (' + P.name + ', SI)',
-                'Je=' + P.Je.toFixed(4) + '  Jp=' + P.Jp.toFixed(4) + '  Jt=' + P.Jt.toFixed(4) + ' kg m^2',
-                'La=' + P.La.toFixed(3) + '  Lh=' + P.Lh.toFixed(3) + ' m  m=' + P.m.toFixed(3) + ' kg  Kf=' + P.Kf.toFixed(4) + ' N/V',
-                'Dt=' + P.Dt.toFixed(4) + '  Vop=' + Sim3DOF.hoverVoltage(P).toFixed(3) + ' V  |V|<=' + P.Vmax + ' V',
+                '$J_e$ = ' + P.Je.toFixed(4) + '   $J_p$ = ' + P.Jp.toFixed(4) + '   $J_t$ = ' + P.Jt.toFixed(4) + ' kg m$^2$',
+                '$L_a$ = ' + P.La.toFixed(3) + '   $L_h$ = ' + P.Lh.toFixed(3) + ' m   $m$ = ' + P.m.toFixed(3) + ' kg   $K_f$ = ' + P.Kf.toFixed(4) + ' N/V',
+                '$D_t$ = ' + P.Dt.toFixed(4) + '   $V_{op}$ = ' + Sim3DOF.hoverVoltage(P).toFixed(3) + ' V   $|V| \\le$ ' + P.Vmax + ' V',
                 '',
                 'Limits',
-                'pitch +/-' + (P.phMax * 180 / Math.PI).toFixed(1) + ' deg  elevation [' + (P.thMin * 180 / Math.PI).toFixed(1) + ', ' + (P.thMax * 180 / Math.PI).toFixed(1) + '] deg',
+                'pitch $\\pm$' + (P.phMax * 180 / Math.PI).toFixed(1) + ' deg   elevation [' + (P.thMin * 180 / Math.PI).toFixed(1) + ', ' + (P.thMax * 180 / Math.PI).toFixed(1) + '] deg',
                 '',
                 'Gains (designed on nominal model)',
-                'PID kp_e=' + Sim3DOF.GAINS.pid.kp_e.toFixed(2) + ' kd_e=' + Sim3DOF.GAINS.pid.kd_e.toFixed(2) + ' kp_p=' + Sim3DOF.GAINS.pid.kp_p.toFixed(2) + ' kp_t=' + Sim3DOF.GAINS.pid.kp_t.toFixed(3),
-                'LQR-I K1=[' + Sim3DOF.GAINS.lqri[0].map(v => v.toFixed(1)).join(' ') + ']',
+                'PID  $K_{p,\\theta}$ = ' + Sim3DOF.GAINS.pid.kp_e.toFixed(2) + '   $K_{d,\\theta}$ = ' + Sim3DOF.GAINS.pid.kd_e.toFixed(2) + '   $K_{p,\\phi}$ = ' + Sim3DOF.GAINS.pid.kp_p.toFixed(2) + '   $K_{p,\\psi}$ = ' + Sim3DOF.GAINS.pid.kp_t.toFixed(3),
+                'LQR-I  $K$ row 1 = [' + Sim3DOF.GAINS.lqri[0].map(v => v.toFixed(1)).join(' ') + ']',
                 '',
                 'Hardware effects',
-                'enabled=' + (state.realismMode ? 'true' : 'false') + '  encoders 4096/8192 cpr  motor tau=' + HW_EFFECTS.motorTau.toFixed(2) + ' s',
+                'enabled=' + (state.realismMode ? 'true' : 'false') + '  encoders 4096/8192 cpr  motor $\\tau$ = ' + HW_EFFECTS.motorTau.toFixed(2) + ' s',
                 '',
                 'State',
-                'psi=' + toDeg(state.travel).toFixed(2) + ' deg  dpsi=' + toDeg(state.dtravel).toFixed(2) + ' deg/s',
-                'theta=' + toDeg(state.elevation).toFixed(2) + ' deg  dtheta=' + toDeg(state.delevation).toFixed(2) + ' deg/s',
-                'phi=' + toDeg(state.pitch).toFixed(2) + ' deg  dphi=' + toDeg(state.dpitch).toFixed(2) + ' deg/s',
-                'target psi=' + toDeg(state.targetTravel).toFixed(2) + ' deg  target theta=' + toDeg(state.targetElevation).toFixed(2) + ' deg',
+                '$\\psi$ = ' + toDeg(state.travel).toFixed(2) + ' deg   $\\dot\\psi$ = ' + toDeg(state.dtravel).toFixed(2) + ' deg/s',
+                '$\\theta$ = ' + toDeg(state.elevation).toFixed(2) + ' deg   $\\dot\\theta$ = ' + toDeg(state.delevation).toFixed(2) + ' deg/s',
+                '$\\phi$ = ' + toDeg(state.pitch).toFixed(2) + ' deg   $\\dot\\phi$ = ' + toDeg(state.dpitch).toFixed(2) + ' deg/s',
+                'target $\\psi_r$ = ' + toDeg(state.targetTravel).toFixed(2) + ' deg   target $\\theta_r$ = ' + toDeg(state.targetElevation).toFixed(2) + ' deg',
                 '',
                 'Inputs',
-                'command Vf=' + inputs.front.toFixed(2) + ' V  Vb=' + inputs.back.toFixed(2) + ' V',
-                'actuator Vf=' + actuators.front.toFixed(2) + ' V  Vb=' + actuators.back.toFixed(2) + ' V  Vcoll=' + ((actuators.front + actuators.back) / 2).toFixed(2) + '  Vcyc=' + ((actuators.front - actuators.back) / 2).toFixed(2)
+                'command $V_f$ = ' + inputs.front.toFixed(2) + ' V   $V_b$ = ' + inputs.back.toFixed(2) + ' V',
+                'actuator $V_f$ = ' + actuators.front.toFixed(2) + ' V   $V_b$ = ' + actuators.back.toFixed(2) + ' V   $V_{\\mathrm{coll}}$ = ' + ((actuators.front + actuators.back) / 2).toFixed(2) + '   $V_{\\mathrm{cyc}}$ = ' + ((actuators.front - actuators.back) / 2).toFixed(2)
             ];
 
             let y = 94;
@@ -1163,7 +1167,8 @@
                     ctx.fillStyle = '#334155';
                     ctx.font = '600 20px Inter, sans-serif';
                 }
-                ctx.fillText(ln, 36, y);
+                if (window.MathUI) window.MathUI.drawText(ctx, ln, 36, y, { size: parseInt(ctx.font.split(' ')[1], 10), weight: parseInt(ctx.font, 10), family: 'Inter, sans-serif' });
+                else ctx.fillText(ln.replace(/\$/g, ''), 36, y);
                 y += 24;
             }
 
@@ -1384,17 +1389,17 @@
             parts.waypointArm.add(wpBody);
 
             // Axis meaning overlays: ψ = travel (yaw), θ = elevation, φ = pitch
-            parts.psiViz = makeAngleVisualizer('ψ', 0x2563eb, 1.2, 'y');
+            parts.psiViz = makeAngleVisualizer('$\\psi$', 0x2563eb, 1.2, 'y');
             parts.psiViz.position.set(0, 1.95, 0);
             parts.travelPivot.add(parts.psiViz);
 
-            parts.thetaViz = makeAngleVisualizer('θ', 0xd97706, 1.0, 'z');
+            parts.thetaViz = makeAngleVisualizer('$\\theta$', 0xd97706, 1.0, 'z');
             parts.thetaViz.position.set(0.2, 0.85, 0.9);
             parts.elevationArmGroup.add(parts.thetaViz);
 
             // φ is defined at the pitch axis relative to the elevation-arm frame.
             // Anchor this visualizer to elevationArmGroup (not pitchPivot) so it doesn't rotate away with the body.
-            parts.phiViz = makeAngleVisualizer('φ', 0x7c3aed, 1.15, 'x');
+            parts.phiViz = makeAngleVisualizer('$\\phi$', 0x7c3aed, 1.15, 'x');
             parts.phiViz.position.set(geom.Le + 0.15, 0.95, 0.95);
             parts.elevationArmGroup.add(parts.phiViz);
 
@@ -1486,6 +1491,9 @@
             }
             function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
             function text(x, y, s, o = {}) {
+                if (window.MathUI && window.MathUI.has(s) && window.katex)
+                    return window.MathUI.svgText(x, y, s, { size: o.size || 12, weight: o.weight || 400, fill: o.fill || C.ink, anchor: o.anchor || 'middle', italic: o.italic });
+                if (window.MathUI) s = window.MathUI.plain(s);
                 return '<text x="' + x + '" y="' + y + '" text-anchor="' + (o.anchor || 'middle') + '" font-size="' + (o.size || 12) +
                     '" font-weight="' + (o.weight || 400) + '" fill="' + (o.fill || C.ink) + '" style="' + FONT + '"' +
                     (o.italic ? ' font-style="italic"' : '') + '>' + rich(s) + '</text>';
@@ -1538,38 +1546,38 @@
                 // feedback buses (measured outputs)
                 s += w([[805, 112], [805, 26], [395, 26], [395, 81]], C.fb, { dash: true, anim: false });
                 s += w([[395, 26], [104, 26], [104, 81]], C.fb, { dash: true, anim: false });
-                s += text(600, 20, 'measured φ', { size: 11, fill: C.sub }) + text(250, 20, 'measured ψ', { size: 11, fill: C.sub });
+                s += text(600, 20, 'measured $\\phi$', { size: 11, fill: C.sub }) + text(250, 20, 'measured $\\psi$', { size: 11, fill: C.sub });
                 s += w([[805, 168], [805, 282], [104, 282], [104, 199]], C.fb, { dash: true, anim: false });
-                s += text(560, 298, 'measured θ   (the D terms act on the measured rates ψ̇, θ̇, φ̇)', { size: 11, fill: C.sub });
+                s += text(560, 298, 'measured $\\theta$   (the D terms act on the measured rates $\\dot\\psi, \\dot\\theta, \\dot\\phi$)', { size: 11, fill: C.sub });
                 // travel -> pitch reference -> cyclic voltage
-                s += chip(18, 90, 50, C.travel, 'ψ_r') + w([[68, 90], [93, 90]], C.travel);
+                s += chip(18, 90, 50, C.travel, '$\\psi_r$') + w([[68, 90], [93, 90]], C.travel);
                 s += sum(104, 90, { w: '+', n: '−' });
-                s += w([[113, 90], [134, 90]], C.travel) + text(123, 106, 'e_ψ', { size: 11, fill: C.travel });
-                s += box(136, 68, 116, 44, C.travel, 'Travel PID', '−C_ψ(s)');
+                s += w([[113, 90], [134, 90]], C.travel) + text(123, 106, '$e_\\psi$', { size: 11, fill: C.travel });
+                s += box(136, 68, 116, 44, C.travel, 'Travel PID', '$-C_\\psi(s)$');
                 s += w([[252, 90], [276, 90]], C.travel);
-                s += box(278, 72, 66, 36, C.travel, 'sat', '±20°', { s1: 11.5 });
-                s += w([[344, 90], [384, 90]], C.pitch) + text(364, 82, 'φ_r', { size: 11.5, weight: 600, fill: C.pitch });
+                s += box(278, 72, 66, 36, C.travel, 'sat', '$\\pm 20^\\circ$', { s1: 11.5 });
+                s += w([[344, 90], [384, 90]], C.pitch) + text(364, 82, '$\\phi_r$', { size: 11.5, weight: 600, fill: C.pitch });
                 s += sum(395, 90, { w: '+', n: '−' });
                 s += w([[404, 90], [426, 90]], C.pitch);
-                s += box(428, 68, 110, 44, C.pitch, 'Pitch PD', '½ C_φ(s)');
-                s += w([[538, 90], [588, 90], [588, 112], [604, 112]], C.volt) + text(563, 82, 'V_{cyc}', { size: 11.5, weight: 600, fill: C.volt });
+                s += box(428, 68, 110, 44, C.pitch, 'Pitch PD', '$\\tfrac12 C_\\phi(s)$');
+                s += w([[538, 90], [588, 90], [588, 112], [604, 112]], C.volt) + text(563, 82, '$V_{\\mathrm{cyc}}$', { size: 11.5, weight: 600, fill: C.volt });
                 // elevation -> collective voltage
-                s += chip(18, 190, 50, C.elev, 'θ_r') + w([[68, 190], [93, 190]], C.elev);
+                s += chip(18, 190, 50, C.elev, '$\\theta_r$') + w([[68, 190], [93, 190]], C.elev);
                 s += sum(104, 190, { w: '+', s: '−' });
-                s += w([[113, 190], [134, 190]], C.elev) + text(123, 179, 'e_θ', { size: 11, fill: C.elev });
-                s += box(136, 168, 116, 44, C.elev, 'Elevation PID', '½ C_θ(s)');
+                s += w([[113, 190], [134, 190]], C.elev) + text(123, 179, '$e_\\theta$', { size: 11, fill: C.elev });
+                s += box(136, 168, 116, 44, C.elev, 'Elevation PID', '$\\tfrac12 C_\\theta(s)$');
                 s += w([[252, 190], [384, 190]], C.elev);
-                s += box(330, 226, 130, 40, C.ff, 'Hover feedforward', 'V_op(θ, φ)', { s1: 11.5 });
+                s += box(330, 226, 130, 40, C.ff, 'Hover feedforward', '$V_{op}(\\theta, \\phi)$', { s1: 11.5 });
                 s += w([[395, 226], [395, 201]], C.ff);
                 s += sum(395, 190, { w: '+', s: '+' });
-                s += w([[404, 190], [588, 190], [588, 168], [604, 168]], C.volt) + text(563, 182, 'V_{coll}', { size: 11.5, weight: 600, fill: C.volt });
+                s += w([[404, 190], [588, 190], [588, 168], [604, 168]], C.volt) + text(563, 182, '$V_{\\mathrm{coll}}$', { size: 11.5, weight: 600, fill: C.volt });
                 // mixer and plant
                 s += '<rect x="606" y="92" width="118" height="96" rx="8" fill="' + C.volt + '12" stroke="' + C.volt + '" stroke-width="1.6"/>';
                 s += text(665, 114, 'Mixer', { size: 12.5, weight: 600, fill: C.volt });
-                s += text(665, 138, 'V_f = V_{coll} + V_{cyc}', { size: 11, fill: C.sub }) + text(665, 156, 'V_b = V_{coll} − V_{cyc}', { size: 11, fill: C.sub });
-                s += text(665, 176, '|V| ≤ V_{max}', { size: 10.5, fill: C.sub });
+                s += text(665, 138, '$V_f = V_{\\mathrm{coll}} + V_{\\mathrm{cyc}}$', { size: 11, fill: C.sub }) + text(665, 156, '$V_b = V_{\\mathrm{coll}} - V_{\\mathrm{cyc}}$', { size: 11, fill: C.sub });
+                s += text(665, 176, '$|V| \\le V_{\\max}$', { size: 10.5, fill: C.sub });
                 s += w([[724, 140], [738, 140]], C.volt);
-                s += box(740, 112, 130, 56, C.plant, '3-DOF helicopter', 'θ, φ, ψ');
+                s += box(740, 112, 130, 56, C.plant, '3-DOF helicopter', '$\\theta, \\phi, \\psi$');
                 return svg(884, 306, (anim ? '<style>.cd-flow{animation:cdflow .9s linear infinite}@keyframes cdflow{to{stroke-dashoffset:-18.2}}</style>' : '') + s, 'cd-full');
             }
 
@@ -1578,49 +1586,49 @@
                 let s = defs(id, PAL);
                 // feedback bus
                 s += w([[790, 168], [790, 272], [104, 272], [104, 149]], C.fb, { dash: true, anim: false });
-                s += text(240, 266, 'measured θ, ψ', { size: 11, fill: C.sub });
+                s += text(240, 266, 'measured $\\theta, \\psi$', { size: 11, fill: C.sub });
                 s += w([[360, 272], [360, 229]], C.fb, { dash: true, anim: false });
-                s += text(470, 266, 'measured φ and rates θ̇, φ̇, ψ̇', { size: 11, fill: C.sub });
+                s += text(470, 266, 'measured $\\phi$ and rates $\\dot\\theta, \\dot\\phi, \\dot\\psi$', { size: 11, fill: C.sub });
                 // references and errors
-                s += chip(14, 140, 62, C.ink, 'θ_r, ψ_r') + w([[76, 140], [93, 140]], C.line);
+                s += chip(14, 140, 62, C.ink, '$\\theta_r, \\psi_r$') + w([[76, 140], [93, 140]], C.line);
                 s += sum(104, 140, { w: '−', s: '+' });
-                s += w([[113, 140], [306, 140]], C.line) + text(135, 132, 'e', { size: 11.5, weight: 600, fill: C.line });
+                s += w([[113, 140], [306, 140]], C.line) + text(135, 132, '$e$', { size: 11.5, weight: 600, fill: C.line });
                 s += w([[150, 140], [150, 196], [176, 196]], C.line, { arrow: true });
-                s += box(178, 178, 108, 36, C.line, '∫ e dt', 'clamped', { s1: 12 });
+                s += box(178, 178, 108, 36, C.line, '$\\int e\\,dt$', 'clamped', { s1: 12 });
                 s += w([[286, 196], [306, 196]], C.line);
                 // z stack
                 s += '<rect x="308" y="54" width="104" height="174" rx="8" fill="#f8fafc" stroke="' + C.line + '" stroke-width="1.4"/>';
-                s += text(360, 72, 'z (8 states)', { size: 11.5, weight: 600, fill: C.line });
-                ['e_θ = θ − θ_r', 'φ', 'e_ψ = ψ − ψ_r', 'θ̇', 'φ̇', 'ψ̇', '∫e_θ', '∫e_ψ'].forEach((t, i) => { s += text(360, 92 + i * 17.5, t, { size: 11, fill: C.sub }); });
+                s += text(360, 72, '$z$ (8 states)', { size: 11.5, weight: 600, fill: C.line });
+                ['$e_\\theta = \\theta - \\theta_r$', '$\\phi$', '$e_\\psi = \\psi - \\psi_r$', '$\\dot\\theta$', '$\\dot\\phi$', '$\\dot\\psi$', '$\\int e_\\theta$', '$\\int e_\\psi$'].forEach((t, i) => { s += text(360, 92 + i * 17.5, t, { size: 11, fill: C.sub }); });
                 s += w([[412, 140], [438, 140]], C.pitch);
-                s += box(440, 112, 126, 56, C.pitch, 'State feedback', '−K z   (K: 2×8)');
-                s += text(503, 186, 'K from Q, R (Riccati)', { size: 10.5, fill: C.sub, italic: true });
+                s += box(440, 112, 126, 56, C.pitch, 'State feedback', '$-Kz$   ($K \\in \\mathbb{R}^{2\\times 8}$)');
+                s += text(503, 186, '$K$ from $Q, R$ (Riccati)', { size: 10.5, fill: C.sub, italic: true });
                 s += w([[566, 140], [610, 140]], C.volt);
-                s += box(556, 30, 130, 40, C.ff, 'Hover feedforward', 'V_op(θ, φ)', { s1: 11.5 });
+                s += box(556, 30, 130, 40, C.ff, 'Hover feedforward', '$V_{op}(\\theta, \\phi)$', { s1: 11.5 });
                 s += w([[621, 70], [621, 130]], C.ff);
                 s += sum(621, 140, { w: '+', n: '+' });
-                s += w([[630, 140], [674, 140]], C.volt) + text(652, 158, 'V_f, V_b', { size: 11, weight: 600, fill: C.volt });
-                s += box(676, 112, 130, 56, C.plant, '3-DOF helicopter', '|V| ≤ V_{max}');
+                s += w([[630, 140], [674, 140]], C.volt) + text(652, 158, '$V_f, V_b$', { size: 11, weight: 600, fill: C.volt });
+                s += box(676, 112, 130, 56, C.plant, '3-DOF helicopter', '$|V| \\le V_{\\max}$');
                 return svg(820, 290, (anim ? '<style>.cd-flow{animation:cdflow .9s linear infinite}@keyframes cdflow{to{stroke-dashoffset:-18.2}}</style>' : '') + s, 'cd-full');
             }
 
             function pidCompact() {
                 const id = 'pc', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c) }, o));
                 let s = defs(id, PAL);
-                s += text(62, 13, 'ψ_r', { size: 12, weight: 600, fill: C.travel }) + w([[62, 17], [62, 30]], C.travel);
-                s += text(178, 13, 'θ_r', { size: 12, weight: 600, fill: C.elev }) + w([[178, 17], [178, 30]], C.elev);
-                s += box(14, 32, 96, 40, C.travel, 'Travel PID', 'C_ψ → φ_r', { s1: 11.5 });
-                s += box(130, 32, 96, 40, C.elev, 'Elevation PID', 'C_θ + V_{op}', { s1: 11 });
-                s += w([[62, 72], [62, 92]], C.pitch) + text(68, 87, 'φ_r ≤ 20°', { size: 10, anchor: 'start', fill: C.pitch });
-                s += box(14, 94, 96, 40, C.pitch, 'Pitch PD', 'C_φ', { s1: 11.5 });
-                s += w([[62, 134], [62, 156]], C.volt) + text(68, 149, 'V_{cyc}', { size: 10.5, anchor: 'start', fill: C.volt });
-                s += w([[178, 72], [178, 156]], C.volt) + text(184, 149, 'V_{coll}', { size: 10.5, anchor: 'start', fill: C.volt });
-                s += box(14, 158, 212, 38, C.volt, 'Mixer', 'V_{f,b} = V_{coll} ± V_{cyc}');
+                s += text(62, 13, '$\\psi_r$', { size: 12, weight: 600, fill: C.travel }) + w([[62, 17], [62, 30]], C.travel);
+                s += text(178, 13, '$\\theta_r$', { size: 12, weight: 600, fill: C.elev }) + w([[178, 17], [178, 30]], C.elev);
+                s += box(14, 32, 96, 40, C.travel, 'Travel PID', '$C_\\psi \\to \\phi_r$', { s1: 11.5 });
+                s += box(130, 32, 96, 40, C.elev, 'Elevation PID', '$C_\\theta + V_{op}$', { s1: 11 });
+                s += w([[62, 72], [62, 92]], C.pitch) + text(68, 87, '$|\\phi_r| \\le 20^\\circ$', { size: 10, anchor: 'start', fill: C.pitch });
+                s += box(14, 94, 96, 40, C.pitch, 'Pitch PD', '$C_\\phi$', { s1: 11.5 });
+                s += w([[62, 134], [62, 156]], C.volt) + text(68, 149, '$V_{\\mathrm{cyc}}$', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += w([[178, 72], [178, 156]], C.volt) + text(184, 149, '$V_{\\mathrm{coll}}$', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += box(14, 158, 212, 38, C.volt, 'Mixer', '$V_{f,b} = V_{\\mathrm{coll}} \\pm V_{\\mathrm{cyc}}$');
                 s += w([[120, 196], [120, 214]], C.volt);
                 s += box(14, 216, 212, 34, C.plant, '3-DOF helicopter', null);
                 s += w([[14, 233], [5, 233], [5, 52], [12, 52]], C.fb, { dash: true }) + w([[5, 114], [12, 114]], C.fb, { dash: true });
                 s += w([[226, 233], [235, 233], [235, 52], [228, 52]], C.fb, { dash: true });
-                s += text(120, 266, 'dashed: measured θ, φ, ψ and rates', { size: 10, fill: C.sub, italic: true });
+                s += text(120, 266, 'dashed: measured $\\theta, \\phi, \\psi$ and rates', { size: 10, fill: C.sub, italic: true });
                 return svg(240, 272, s, 'cd-compact');
             }
 
@@ -1628,14 +1636,14 @@
                 const id = 'lc', w = (pts, c, o = {}) => wire(pts, c, Object.assign({ id: id + PAL.indexOf(c) }, o));
                 let s = defs(id, PAL);
                 s += text(120, 13, 'θ_r, ψ_r', { size: 12, weight: 600, fill: C.ink }) + w([[120, 17], [120, 30]], C.line);
-                s += box(14, 32, 212, 40, C.line, 'Errors + integrators', 'e_θ, e_ψ, ∫e_θ, ∫e_ψ');
-                s += w([[120, 72], [120, 92]], C.line) + text(126, 87, 'z (8 states)', { size: 10, anchor: 'start', fill: C.sub });
-                s += box(14, 94, 212, 40, C.pitch, 'State feedback', 'u = V_{op}(θ, φ) − K z');
-                s += w([[120, 134], [120, 156]], C.volt) + text(126, 149, 'V_f, V_b', { size: 10.5, anchor: 'start', fill: C.volt });
+                s += box(14, 32, 212, 40, C.line, 'Errors + integrators', '$e_\\theta, e_\\psi, \\int e_\\theta, \\int e_\\psi$');
+                s += w([[120, 72], [120, 92]], C.line) + text(126, 87, '$z$ (8 states)', { size: 10, anchor: 'start', fill: C.sub });
+                s += box(14, 94, 212, 40, C.pitch, 'State feedback', '$u = V_{op}(\\theta, \\phi) - Kz$');
+                s += w([[120, 134], [120, 156]], C.volt) + text(126, 149, '$V_f, V_b$', { size: 10.5, anchor: 'start', fill: C.volt });
                 s += box(14, 158, 212, 34, C.plant, '3-DOF helicopter', null);
                 s += w([[14, 175], [5, 175], [5, 52], [12, 52]], C.fb, { dash: true }) + w([[5, 114], [12, 114]], C.fb, { dash: true });
-                s += text(120, 210, 'K from Q, R (Riccati)', { size: 10, fill: C.sub, italic: true });
-                s += text(120, 226, 'dashed: measured θ, φ, ψ and rates', { size: 10, fill: C.sub, italic: true });
+                s += text(120, 210, '$K$ from $Q, R$ (Riccati)', { size: 10, fill: C.sub, italic: true });
+                s += text(120, 226, 'dashed: measured $\\theta, \\phi, \\psi$ and rates', { size: 10, fill: C.sub, italic: true });
                 return svg(240, 234, s, 'cd-compact');
             }
 

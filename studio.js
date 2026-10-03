@@ -16,11 +16,15 @@
             if (k === 'class') e.className = v;
             else if (k === 'style') e.setAttribute('style', v);
             else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
-            else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : v);
+            else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? '' : (/^aria-(label|description)$/.test(k) ? mplain(v) : v));
         }
-        for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+        for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : mnode(c));
         return e;
     };
+    // math in UI strings is written $...$ (TeX) and rendered by math-ui.js (KaTeX); Unicode fallback without it
+    const MU = window.MathUI;
+    const mnode = (c) => (MU && typeof c === 'string' && MU.has(c)) ? MU.node(c) : document.createTextNode(String(c));
+    const mplain = (v) => (MU && typeof v === 'string' && MU.has(v)) ? MU.plain(v) : String(v);
     const fmt = (v, d = 2) => (v === null || v === undefined) ? 'n/a' : (!Number.isFinite(v) ? 'not settled' : (+v).toFixed(d));
     const store = {
         get(k, d) { try { const v = localStorage.getItem('3dof-studio-' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -133,8 +137,8 @@
     function message(text, kind = 'info') {
         const cls = { info: 'bg-sky-50 text-sky-800 border-sky-200', ok: 'bg-emerald-50 text-emerald-800 border-emerald-200', err: 'bg-rose-50 text-rose-800 border-rose-200' }[kind];
         msgBar.className = 'px-4 py-2 text-sm border-b whitespace-pre-wrap ' + cls;
-        msgBar.textContent = text;
-        live.textContent = ''; setTimeout(() => { live.textContent = text; }, 50);   // announce to screen readers
+        msgBar.textContent = ''; msgBar.append(mnode(text));
+        live.textContent = ''; setTimeout(() => { live.textContent = mplain(text); }, 50);   // announce to screen readers
     }
     function clearMessage() { msgBar.className = 'hidden'; }
 
@@ -177,7 +181,7 @@
     const numField = (label, value, onchange, unit = '', hint = '') => h('label', { class: 'flex items-center justify-between gap-2 text-sm py-0.5', 'data-tip': hint || undefined, 'data-tip-title': hint ? label : undefined },
         h('span', { class: 'text-slate-600 dark:text-slate-300' + (hint ? ' underline decoration-dotted decoration-slate-400 underline-offset-4 cursor-help' : '') }, label),
         h('span', { class: 'flex items-center gap-1' },
-            h('input', { class: 'w-28 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 font-mono text-right text-sm', value: String(value), 'aria-description': hint || undefined,
+            h('input', { class: 'w-28 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 font-mono text-right text-sm', value: String(value), 'aria-description': hint ? mplain(hint) : undefined,
                 onchange: (e) => onchange(e.target.value) }),
             h('span', { class: 'w-12 text-xs text-slate-500' }, unit)));
     const parseVal = (v) => { const n = Number(v); return Number.isFinite(n) && String(v).trim() !== '' ? n : String(v).trim(); };
@@ -196,9 +200,9 @@
         tutor: 'Ask an AI tutor about your latest run. Needs your own Groq API key.'
     };
     const BTN_TIPS = {
-        'Reset to design values': 'Restore the gains the lab was designed with (closed-loop poles at 1.5, 4 and 0.6 rad/s).',
-        'Solve for K': 'Solve the Riccati equation for K from your Q and R on the nominal linear model.',
-        'Check code': 'Compile your code and run one step at hover to check that step() returns [Vf, Vb].',
+        'Reset to design values': 'Restore the gains the lab was designed with (closed-loop poles at $\\omega$ = 1.5, 4 and 0.6 rad/s).',
+        'Solve for $K$': 'Solve the Riccati equation for $K$ from your $Q$ and $R$ on the nominal linear model.',
+        'Check code': 'Compile your code and run one step at hover to check that step() returns [Vf, Vb], i.e. $[V_f, V_b]$.',
         'Delete block': 'Remove this block and every wire attached to it (Delete key).',
         '+ Add change': 'Add a reference change 10 s after the last one.',
         '+ Add disturbance': 'Add a torque pulse on one axis.',
@@ -221,8 +225,8 @@
             if (!t || el.tagName === 'svg') return;
             el.setAttribute('data-tip', t);
             const named = el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby') || (el.textContent || '').trim();
-            if (!named) el.setAttribute('aria-label', t);
-            else if (el.getAttribute('aria-label') !== t && !el.hasAttribute('aria-description')) el.setAttribute('aria-description', t);
+            if (!named) el.setAttribute('aria-label', mplain(t));
+            else if (el.getAttribute('aria-label') !== mplain(t) && !el.hasAttribute('aria-description')) el.setAttribute('aria-description', mplain(t));
         });
     }
     function hideTip() {
@@ -313,17 +317,17 @@
         output: '<path d="M1.5 8H13M10 5l3 3-3 3"/><rect x="14.5" y="2.5" width="7.5" height="11" rx="2"/>'
     };
     const BLOCK_INFO = {
-        source: ['Signal source', 'Reads a measured state, a reference, the hover voltage Vop or time. Pick the signal in the inspector.'],
+        source: ['Signal source', 'Reads a measured state, a reference, the hover voltage $V_{op}$ or time. Pick the signal in the inspector.'],
         const: ['Constant', 'Outputs a fixed value. Expressions such as 20*deg are allowed.'],
         gain: ['Gain', 'Multiplies its input by k.'],
-        sum: ['Sum', 'Adds or subtracts its inputs: one + or − per input, e.g. "+-".'],
+        sum: ['Sum $\\Sigma$', 'Adds or subtracts its inputs: one + or − per input, e.g. "+-".'],
         product: ['Product', 'Multiplies its two inputs.'],
-        integrator: ['Integrator', 'Integrates its input (forward Euler). The state is clamped to ±lim for anti-windup.'],
-        derivative: ['Filtered derivative', 'Differentiates its input through a first-order filter of bandwidth wc (rad/s).'],
+        integrator: ['Integrator $1/s$', 'Integrates its input (forward Euler). The state is clamped to $\\pm$lim for anti-windup.'],
+        derivative: ['Filtered derivative', 'Differentiates its input through a first-order filter of bandwidth wc (rad/s): $\\omega_c s/(s + \\omega_c)$.'],
         saturation: ['Saturation', 'Clamps its input between lo and hi.'],
-        wrap: ['Angle wrap', 'Wraps an angle into ±π.'],
-        mixer: ['Rotor mixer', 'Turns collective and differential voltage into rotor voltages: V_f = (V_s + V_d)/2, V_b = (V_s − V_d)/2.'],
-        output: ['Motor output', 'Sends its input to a motor channel, Vf or Vb. A diagram needs exactly one of each.']
+        wrap: ['Angle wrap', 'Wraps an angle into $[-\\pi, \\pi)$.'],
+        mixer: ['Rotor mixer', 'Turns collective and differential voltage into rotor voltages: $V_f = (V_s + V_d)/2$, $V_b = (V_s - V_d)/2$.'],
+        output: ['Motor output', 'Sends its input to a motor channel, $V_f$ or $V_b$. A diagram needs exactly one of each.']
     };
     const BLOCK_GROUPS = [['Signals', ['source', 'const', 'output']], ['Math', ['gain', 'sum', 'product']], ['Dynamics', ['integrator', 'derivative']],
                           ['Nonlinear', ['saturation', 'wrap']], ['Rotors', ['mixer']]];
@@ -339,14 +343,14 @@
         return h('button', { type: 'button', onclick: () => onAdd(t),
             class: 'inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors',
             'data-tip-title': name, 'data-tip': desc, 'data-tip-kbd': ports + ' · click to add',
-            'aria-label': 'Add ' + name + ' block', 'aria-description': desc },
+            'aria-label': 'Add ' + mplain(name) + ' block', 'aria-description': mplain(desc) },
             blockIcon(t), h('span', {}, t));
     }
 
     // ------------------------------------------------------------------ 1. controller
     function renderController() {
         const types = [['pid', 'Cascaded PID', 'Edit the gains of the built-in cascaded PID.'],
-                       ['lqri', 'LQR with integral action', 'Choose Q and R (K is solved in the browser) or type K.'],
+                       ['lqri', 'LQR with integral action', 'Choose $Q$ and $R$ ($K$ is solved in the browser) or type $K$.'],
                        ['code', 'Your own code', 'Write any control law in JavaScript.'],
                        ['diagram', 'Block diagram', 'Wire gains, sums, integrators and limits.']];
         const picker = h('div', { class: 'grid grid-cols-4 gap-2 mb-3' }, types.map(([k, t, d]) =>
@@ -364,44 +368,44 @@
         const PH = {
             kp_e: 'Elevation proportional gain: collective volts per radian of elevation error.',
             ki_e: 'Elevation integral gain: removes the steady elevation error left by model mismatch.',
-            kd_e: 'Elevation derivative gain: damping on the elevation rate θ̇.',
+            kd_e: 'Elevation derivative gain: damping on the elevation rate $\\dot\\theta$.',
             int_lim_e: 'Anti-windup clamp on the elevation error integral.',
             kp_t: 'Travel proportional gain: pitch reference per radian of travel error.',
             ki_t: 'Travel integral gain: removes the steady travel error.',
-            kd_t: 'Travel derivative gain: damping on the travel rate ψ̇.',
+            kd_t: 'Travel derivative gain: damping on the travel rate $\\dot\\psi$.',
             phi_ref_max: 'Largest pitch angle the travel loop may ask for. Expressions such as 20*deg are allowed.',
             int_lim_t: 'Anti-windup clamp on the travel error integral.',
             kp_p: 'Pitch proportional gain: differential volts per radian of pitch error.',
-            kd_p: 'Pitch derivative gain: damping on the pitch rate φ̇.'
+            kd_p: 'Pitch derivative gain: damping on the pitch rate $\\dot\\phi$.'
         };
         const f = (k, label, unit, hint) => numField(label, p[k], set(k), unit, PH[k] || hint);
         const g = S.GAINS.pid;
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             card('Elevation loop → collective voltage',
-                f('kp_e', 'K_p,θ', 'V/rad'), f('ki_e', 'K_i,θ', 'V/(rad s)'), f('kd_e', 'K_d,θ', 'V s/rad'), f('int_lim_e', 'integrator limit', 'rad s'),
-                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'V_s = 2 V_op(θ,φ) + K_p,θ e_θ + K_i,θ ∫e_θ − K_d,θ θ̇')),
+                f('kp_e', '$K_{p,\\theta}$', 'V/rad'), f('ki_e', '$K_{i,\\theta}$', 'V/(rad s)'), f('kd_e', '$K_{d,\\theta}$', 'V s/rad'), f('int_lim_e', 'integrator limit $|{\\int e_\\theta}|$', 'rad s'),
+                h('div', { class: 'text-xs text-slate-500 mt-1' }, '$V_s = 2V_{op}(\\theta,\\phi) + K_{p,\\theta}e_\\theta + K_{i,\\theta}\\int e_\\theta\\,dt - K_{d,\\theta}\\dot\\theta$')),
             card('Travel loop → pitch reference',
-                f('kp_t', 'K_p,ψ', 'rad/rad'), f('ki_t', 'K_i,ψ', '1/s'), f('kd_t', 'K_d,ψ', 's'), f('phi_ref_max', '|φ_r| limit', 'rad', 'e.g. 20*deg'), f('int_lim_t', 'integrator limit', 'rad s'),
-                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'φ_r = −(K_p,ψ e_ψ + K_i,ψ ∫e_ψ − K_d,ψ ψ̇), limited')),
+                f('kp_t', '$K_{p,\\psi}$', 'rad/rad'), f('ki_t', '$K_{i,\\psi}$', '1/s'), f('kd_t', '$K_{d,\\psi}$', 's'), f('phi_ref_max', '$|\\phi_r|$ limit', 'rad', 'e.g. 20*deg'), f('int_lim_t', 'integrator limit $|{\\int e_\\psi}|$', 'rad s'),
+                h('div', { class: 'text-xs text-slate-500 mt-1' }, '$\\phi_r = -\\left(K_{p,\\psi}e_\\psi + K_{i,\\psi}\\int e_\\psi\\,dt - K_{d,\\psi}\\dot\\psi\\right)$, limited')),
             card('Pitch loop → cyclic voltage',
-                f('kp_p', 'K_p,φ', 'V/rad'), f('kd_p', 'K_d,φ', 'V s/rad'),
-                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'V_d = K_p,φ (φ_r − φ) − K_d,φ φ̇;  V_f = (V_s+V_d)/2,  V_b = (V_s−V_d)/2'),
+                f('kp_p', '$K_{p,\\phi}$', 'V/rad'), f('kd_p', '$K_{d,\\phi}$', 'V s/rad'),
+                h('div', { class: 'text-xs text-slate-500 mt-1' }, '$V_d = K_{p,\\phi}(\\phi_r - \\phi) - K_{d,\\phi}\\dot\\phi$;  $V_f = (V_s + V_d)/2$,  $V_b = (V_s - V_d)/2$'),
                 h('div', { class: 'mt-3 flex gap-2' }, btn('Reset to design values', () => { st.design.pid = JSON.parse(JSON.stringify(DEFAULT_DESIGN.pid)); save(); render(); })),
-                h('div', { class: 'text-xs text-slate-500 mt-2' }, `Design values place the closed-loop poles at ω = 1.5 (elevation), 4 (pitch) and 0.6 rad/s (travel). Fields accept expressions such as 20*deg.`))));
+                h('div', { class: 'text-xs text-slate-500 mt-2' }, 'Design values place the closed-loop poles at $\\omega = 1.5$ (elevation), 4 (pitch) and 0.6 rad/s (travel). Fields accept expressions such as 20*deg.'))));
         void g;
     }
 
     function renderLQRI() {
         const q = st.design.lqri;
-        const zN = ['θ−θ_r', 'φ', 'ψ−ψ_r', 'θ̇', 'φ̇', 'ψ̇', '∫e_θ', '∫e_ψ'];
+        const zN = ['\\theta-\\theta_r', '\\phi', '\\psi-\\psi_r', '\\dot\\theta', '\\dot\\phi', '\\dot\\psi', '\\int e_\\theta', '\\int e_\\psi'];   // TeX
         const modeSel = h('div', { class: 'flex gap-3 text-sm mb-2' },
-            ...[['QR', 'Choose weights Q, R (K solved by Riccati)'], ['K', 'Enter the gain matrix K directly']].map(([m, t]) =>
+            ...[['QR', 'Choose weights $Q$, $R$ ($K$ solved by Riccati)'], ['K', 'Enter the gain matrix $K$ directly']].map(([m, t]) =>
                 h('label', { class: 'flex items-center gap-1' }, h('input', { type: 'radio', name: 'lqmode', checked: q.mode === m, onchange: () => { q.mode = m; save(); render(); } }), t)));
-        const qGrid = h('div', { class: 'grid grid-cols-4 gap-x-4' }, zN.map((n, i) => numField('Q[' + n + ']', q.Q[i], (v) => { q.Q[i] = parseVal(v); save(); })));
-        const rGrid = h('div', { class: 'grid grid-cols-4 gap-x-4' }, ['V_f', 'V_b'].map((n, i) => numField('R[' + n + ']', q.R[i], (v) => { q.R[i] = parseVal(v); save(); })));
+        const qGrid = h('div', { class: 'grid grid-cols-4 gap-x-4' }, zN.map((n, i) => numField('$Q[\\,' + n + '\\,]$', q.Q[i], (v) => { q.Q[i] = parseVal(v); save(); })));
+        const rGrid = h('div', { class: 'grid grid-cols-4 gap-x-4' }, ['V_f', 'V_b'].map((n, i) => numField('$R[\\,' + n + '\\,]$', q.R[i], (v) => { q.R[i] = parseVal(v); save(); })));
         const Kt = h('table', { class: 'text-xs font-mono' },
-            h('tr', {}, h('th', {}, ''), zN.map(n => h('th', { class: 'px-1 text-slate-500 font-semibold' }, n))),
-            ['V_f', 'V_b'].map((rn, r) => h('tr', {}, h('td', { class: 'pr-2 text-slate-500 font-semibold' }, rn),
+            h('tr', {}, h('th', {}, ''), zN.map(n => h('th', { class: 'px-1 text-slate-500 font-semibold' }, '$' + n + '$'))),
+            ['V_f', 'V_b'].map((rn, r) => h('tr', {}, h('td', { class: 'pr-2 text-slate-500 font-semibold' }, '$' + rn + '$'),
                 q.K[r].map((v, c) => h('td', {}, h('input', { class: 'w-20 px-1 py-0.5 border rounded text-right ' + (q.mode === 'K' ? 'bg-white' : 'bg-slate-100 text-slate-500'),
                     value: String(v), readonly: q.mode !== 'K', onchange: (e) => { q.K[r][c] = parseVal(e.target.value); save(); } }))))));
         const computeK = () => {
@@ -409,21 +413,21 @@
                 const K = D.lqriGain(S.NOMINAL, q.Q.map(D.evalExpr), q.R.map(D.evalExpr));
                 q.K = K.map(r => r.map(v => +v.toFixed(5))); save(); render();
                 message('K solved from Q and R on the nominal linear model (augmented with the two integrators).', 'ok');
-            } catch (e) { message('Could not solve the Riccati equation: ' + e.message + '\nQ must be ≥ 0 and R > 0.', 'err'); }
+            } catch (e) { message('Could not solve the Riccati equation: ' + e.message + '\n$Q$ must be $\\ge 0$ and $R > 0$.', 'err'); }
         };
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             h('div', { class: 'col-span-2 space-y-3' },
                 card('Mode', modeSel),
-                q.mode === 'QR' ? card('State weights Q (diagonal)', qGrid) : null,
-                q.mode === 'QR' ? card('Input weights R (diagonal)', rGrid, h('div', { class: 'mt-2' }, btn('Solve for K', computeK, 'primary'))) : null,
-                card('Gain matrix K  (u = V_op·1 − K z)', Kt)),
+                q.mode === 'QR' ? card('State weights $Q$ (diagonal)', qGrid) : null,
+                q.mode === 'QR' ? card('Input weights $R$ (diagonal)', rGrid, h('div', { class: 'mt-2' }, btn('Solve for $K$', computeK, 'primary'))) : null,
+                card('Gain matrix $K$  ($u = V_{op}\\mathbf{1} - Kz$)', Kt)),
             card('About this controller',
                 h('div', { class: 'text-sm space-y-2 text-slate-600 dark:text-slate-300' },
                     h('p', {}, 'The augmented state adds the integrals of the elevation and travel errors, so constant disturbances are rejected.'),
-                    h('p', {}, 'In Q/R mode, K is recomputed from your weights when you simulate. Larger Q entries penalise that error more; larger R makes the controller use less voltage.'),
-                    h('p', {}, 'Tip: compare a design with a large travel weight on the 90° travel test. Does it hit the ±32° pitch stop?')),
-                numField('∫e_θ limit', q.int_lim_e, (v) => { q.int_lim_e = parseVal(v); save(); }, 'rad s'),
-                numField('∫e_ψ limit', q.int_lim_t, (v) => { q.int_lim_t = parseVal(v); save(); }, 'rad s'))));
+                    h('p', {}, 'In $Q$/$R$ mode, $K$ is recomputed from your weights when you simulate. Larger $Q$ entries penalise that error more; larger $R$ makes the controller use less voltage.'),
+                    h('p', {}, 'Tip: compare a design with a large travel weight on the $90^\\circ$ travel test. Does it hit the $\\pm 32^\\circ$ pitch stop?')),
+                numField('$|{\\int e_\\theta}|$ limit', q.int_lim_e, (v) => { q.int_lim_e = parseVal(v); save(); }, 'rad s'),
+                numField('$|{\\int e_\\psi}|$ limit', q.int_lim_t, (v) => { q.int_lim_t = parseVal(v); save(); }, 'rad s'))));
     }
 
     function renderCode() {
@@ -448,10 +452,10 @@
                     h('div', {}, h('b', {}, 'function init(P, lib)'), ' runs once per test and returns your memory object (numbers or arrays of numbers).'),
                     h('div', {}, h('b', {}, 'function step(y, ref, dt, mem, P, lib)'), ' runs every 1 ms.'),
                     h('ul', { class: 'list-disc pl-4' },
-                        h('li', {}, 'y = [θ, φ, ψ, θ̇, φ̇, ψ̇] (rad, rad/s); with hardware effects on, angles are encoder-quantised and rates are filtered'),
+                        h('li', {}, 'y = $[\\theta, \\phi, \\psi, \\dot\\theta, \\dot\\phi, \\dot\\psi]$ (rad, rad/s); with hardware effects on, angles are encoder-quantised and rates are filtered'),
                         h('li', {}, 'ref = { theta, psi } in rad'), h('li', {}, 'dt = 0.001 s'),
                         h('li', {}, 'P: Je, Jp, Jt, La, Lh, m, g, Kf, Vmax, phMax, thMin, thMax')),
-                    h('div', {}, h('b', {}, 'lib'), ': deg, clamp(v,lo,hi), wrap(a), hoverVoltage(θ,φ), lqriGain(Q,R), lqr(A,B,Q,R), linearize(), eigvals(M), mat.{mul,add,T,inv,solve,eye,zeros,diag}'),
+                    h('div', {}, h('b', {}, 'lib'), ': deg, clamp(v,lo,hi), wrap(a), hoverVoltage(theta, phi), lqriGain(Q,R), lqr(A,B,Q,R), linearize(), eigvals(M), mat.{mul,add,T,inv,solve,eye,zeros,diag}'),
                     h('div', {}, 'Keep every value that must persist (integrators, filters, previous errors) in mem. The linear analysis uses mem as the controller state.')))));
     }
 
@@ -471,7 +475,7 @@
                     h('span', { class: 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1' }, g),
                     ts.map(t => blockButton(t, addBlock))))),
             h('div', { class: 'flex flex-wrap items-center gap-1.5' },
-                ibtn('fa-circle-check', 'Validate', validateDiagram, 'primary', 'Check that every input is wired, there is exactly one Vf and one Vb output, and there are no algebraic loops.'),
+                ibtn('fa-circle-check', 'Validate', validateDiagram, 'primary', 'Check that every input is wired, there is exactly one $V_f$ and one $V_b$ output, and there are no algebraic loops.'),
                 ibtn('fa-wand-magic-sparkles', 'PID template', () => { if (confirm('Replace the diagram with the cascaded PID template?')) { st.design.diagram = D.diagramPID(); st.diagSel = null; save(); render(); } }, 'plain', 'Replace the diagram with the cascaded PID template.'),
                 ibtn('fa-eraser', 'Clear', () => { if (confirm('Remove all blocks?')) { st.design.diagram = blankDiagram(); st.diagSel = null; save(); render(); } }, 'danger', 'Remove every block except the rotor mixer and the two motor outputs.'),
                 h('span', { class: 'mx-1 h-5 border-l border-slate-300 dark:border-slate-600', 'aria-hidden': 'true' }),
@@ -526,8 +530,9 @@
             const sel = st.diagSel && st.diagSel.block === b.id;
             const bh = blockH(b), col = colorOf[b.type] || '#52514e';
             g.append(el('rect', { width: BW, height: bh, rx: 6, fill: sel ? '#eef2ff' : '#ffffff', stroke: sel ? '#4f46e5' : col, 'stroke-width': sel ? 2.5 : 1.5 }));
-            const lab = el('text', { x: BW / 2, y: bh / 2 + 4, 'text-anchor': 'middle', 'font-size': 12, 'font-family': 'Inter, sans-serif', fill: '#0f172a' });
-            lab.textContent = D.BLOCK_TYPES[b.type].label(b);
+            let lab;
+            if (MU) lab = MU.svgNode(BW / 2, bh / 2 + 4, blockTex(b), { size: 12, fill: '#0f172a' });
+            else { lab = el('text', { x: BW / 2, y: bh / 2 + 4, 'text-anchor': 'middle', 'font-size': 12, 'font-family': 'Inter, sans-serif', fill: '#0f172a' }); lab.textContent = D.BLOCK_TYPES[b.type].label(b); }
             const idt = el('text', { x: 4, y: -4, 'font-size': 9, 'font-family': 'monospace', fill: '#94a3b8' }); idt.textContent = b.id;
             g.append(lab, idt);
             g.addEventListener('mousedown', (e) => startDrag(e, b, svg));
@@ -541,15 +546,36 @@
                 const c = el('circle', { cx: b.x + BW, cy: portY(b, i, D.nOut(b)), r: 5, fill: col, stroke: '#fff', 'stroke-width': 1.5, style: 'cursor:crosshair' });
                 c.addEventListener('mousedown', (e) => startWire(e, b, i, svg));
                 svg.append(c);
-                if (b.type === 'mixer') { const t = el('text', { x: b.x + BW - 22, y: portY(b, i, 2) + 4, 'font-size': 10, fill: '#475569' }); t.textContent = i ? 'V_b' : 'V_f'; svg.append(t); }
+                if (b.type === 'mixer') svg.append(portLabel(b.x + BW - 8, portY(b, i, 2) + 4, i ? '$V_b$' : '$V_f$', 'end'));
             }
-            if (b.type === 'mixer') ['V_s', 'V_d'].forEach((n, i) => { const t = el('text', { x: b.x + 8, y: portY(b, i, 2) + 4, 'font-size': 10, fill: '#475569' }); t.textContent = n; svg.append(t); });
+            if (b.type === 'mixer') ['$V_s$', '$V_d$'].forEach((n, i) => svg.append(portLabel(b.x + 8, portY(b, i, 2) + 4, n, 'start')));
+        }
+        function portLabel(x, y, tex, anchor) {
+            if (MU) return MU.svgNode(x, y, tex, { size: 10, fill: '#475569', anchor, width: 80 });
+            const t = el('text', { x, y, 'font-size': 10, fill: '#475569', 'text-anchor': anchor }); t.textContent = tex.replace(/\$/g, ''); return t;
         }
         svg.addEventListener('mousedown', (e) => { if (e.target === svg) { st.diagSel = null; render(); } });
         const canvasWrap = h('div', { class: 'overflow-auto border rounded-lg border-slate-200 dark:border-slate-700 h-[56vh] bg-slate-50', style: 'scrollbar-gutter:stable' }, svg);
         body.append(palette, h('div', { class: 'grid grid-cols-4 gap-3' }, h('div', { class: 'col-span-3' }, canvasWrap,
             h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Drag blocks to move them. Drag from an output port (filled) to an input port (open) to connect. Click a block or wire to select it; Delete removes it. Keyboard: Tab to a block, Enter selects it, arrow keys move it (Shift for larger steps), and the inspector connects its inputs. Integrators break feedback loops. Units: rad, rad/s, volts.')),
             renderBlockInspector()));
+    }
+    // what a block shows on the canvas (TeX); the aria-label keeps the plain label from sim-design.js
+    const SIG_TEX = { theta: '$\\theta$', phi: '$\\phi$', psi: '$\\psi$', dtheta: '$\\dot\\theta$', dphi: '$\\dot\\phi$', dpsi: '$\\dot\\psi$',
+                      theta_ref: '$\\theta_r$', psi_ref: '$\\psi_r$', Vop: '$V_{op}$', time: '$t$' };
+    function blockTex(b) {
+        const p = b.params;
+        switch (b.type) {
+            case 'source': return SIG_TEX[p.signal] || String(p.signal);
+            case 'gain': return '$\\times$ ' + p.k;
+            case 'sum': return '$\\Sigma$ ' + p.signs;
+            case 'product': return '$\\times$';
+            case 'integrator': return '$\\int$';
+            case 'derivative': return '$\\frac{d}{dt}$ (' + p.wc + ')';
+            case 'wrap': return 'wrap $\\pm\\pi$';
+            case 'output': return p.channel === 'Vb' ? '$V_b$' : p.channel === 'Vf' ? '$V_f$' : String(p.channel);
+            default: return D.BLOCK_TYPES[b.type].label(b);
+        }
     }
     function blankDiagram() {
         return { name: 'My diagram', blocks: [
@@ -607,7 +633,7 @@
         const dg = st.design.diagram, s0 = st.diagSel;
         const b = s0 && s0.block ? dg.blocks.find(x => x.id === s0.block) : null;
         if (!b) return card('Selected block', h('div', { class: 'text-sm text-slate-500' }, 'Select a block to edit its parameters.'),
-            h('div', { class: 'text-xs text-slate-500 mt-3 leading-5' }, 'Signals available from source blocks: ' + D.SIGNALS.join(', ') + '. Vop is the per-motor hover voltage V_op(θ,φ).'));
+            h('div', { class: 'text-xs text-slate-500 mt-3 leading-5' }, 'Signals available from source blocks: ' + D.SIGNALS.join(', ') + '. Vop is the per-motor hover voltage $V_{op}(\\theta, \\phi)$.'));
         const fields = Object.keys(D.BLOCK_TYPES[b.type].params).map(k => {
             if (k === 'signal') return h('label', { class: 'flex justify-between text-sm py-0.5' }, 'signal',
                 h('select', { class: 'border rounded px-1', onchange: (e) => { b.params.signal = e.target.value; save(); render(); } }, D.SIGNALS.map(s0 => h('option', { value: s0, selected: s0 === b.params.signal }, s0))));
@@ -624,7 +650,7 @@
         const inputs = D.nIn(b) ? h('div', { class: 'mt-2 pt-2 border-t border-slate-200' }, h('div', { class: 'text-xs font-bold uppercase tracking-wide text-slate-500 mb-1' }, 'Inputs'),
             Array.from({ length: D.nIn(b) }, (_, i) => {
                 const w = dg.wires.find(w => w.to.id === b.id && w.to.port === i), cur = w ? w.from.id + ':' + w.from.port : '';
-                const nm = b.type === 'mixer' ? ['V_s', 'V_d'][i] : b.type === 'sum' ? (b.params.signs[i] || '+') + ' input ' + (i + 1) : 'input ' + (i + 1);
+                const nm = b.type === 'mixer' ? ['$V_s$', '$V_d$'][i] : b.type === 'sum' ? (b.params.signs[i] || '+') + ' input ' + (i + 1) : 'input ' + (i + 1);
                 return h('label', { class: 'flex justify-between items-center gap-2 text-sm py-0.5' }, nm,
                     h('select', { class: 'border rounded px-1 font-mono text-xs', 'aria-label': `Block ${b.id} ${nm}: connected from`,
                         onchange: (e) => { dg.wires = dg.wires.filter(x => !(x.to.id === b.id && x.to.port === i));
@@ -636,13 +662,13 @@
         return card('Block ' + b.id + ' · ' + b.type, ...fields, inputs,
             h('div', { class: 'mt-2 flex gap-2' }, btn('Delete block', () => deleteDiagSelection(), 'danger')),
             h('div', { class: 'text-xs text-slate-500 mt-2' }, ({
-                integrator: 'Output is the state; the input is integrated after the step (forward Euler) and clamped to ±lim.',
-                derivative: 'Filtered derivative with bandwidth wc (rad/s).', sum: 'signs: one + or − per input, e.g. "+-+".',
-                mixer: 'V_f = (V_s + V_d)/2, V_b = (V_s − V_d)/2.', saturation: 'Clamp between lo and hi (expressions allowed, e.g. -20*deg).'
+                integrator: 'Output is the state; the input is integrated after the step (forward Euler) and clamped to $\\pm$lim.',
+                derivative: 'Filtered derivative with bandwidth wc (rad/s): $\\dfrac{\\omega_c s}{s + \\omega_c}$.', sum: 'signs: one + or − per input, e.g. "+-+".',
+                mixer: '$V_f = (V_s + V_d)/2$,  $V_b = (V_s - V_d)/2$.', saturation: 'Clamp between lo and hi (expressions allowed, e.g. -20*deg).'
             })[b.type] || ''));
     }
     function validateDiagram() {
-        try { D.compileDiagram(st.design.diagram, S.NOMINAL); message('The diagram is valid: every input is connected, there is one Vf and one Vb output, and there are no algebraic loops.', 'ok'); }
+        try { D.compileDiagram(st.design.diagram, S.NOMINAL); message('The diagram is valid: every input is connected, there is one $V_f$ and one $V_b$ output, and there are no algebraic loops.', 'ok'); }
         catch (e) { message('The diagram has problems:\n' + e.message, 'err'); }
     }
 
@@ -685,18 +711,18 @@
             h('div', { class: 'space-y-3' },
                 card('Test', h('div', { class: 'mb-2' }, presetSel),
                     h('label', { class: 'flex justify-between text-sm py-0.5' }, 'Name', h('input', { class: 'w-44 px-1 border rounded text-sm', value: sc.name, onchange: (e) => { sc.name = e.target.value; save(); } })),
-                    numField('Duration', sc.T, set('T'), 's'), numField('Initial elevation θ₀', sc.theta0, set('theta0'), 'deg', '−27.5 = resting on the lower stop'),
+                    numField('Duration', sc.T, set('T'), 's'), numField('Initial elevation $\\theta_0$', sc.theta0, set('theta0'), 'deg', '$\\theta_0 = -27.5^\\circ$ is resting on the lower stop'),
                     h('label', { class: 'flex justify-between text-sm py-0.5' }, 'Plant parameters',
                         h('select', { class: 'border rounded px-1', onchange: (e) => { sc.preset = e.target.value; save(); } },
                             h('option', { value: 'nominal', selected: sc.preset === 'nominal' }, 'Quanser nominal'), h('option', { value: 'identified', selected: sc.preset === 'identified' }, 'Identified rig'))),
                     h('label', { class: 'flex justify-between text-sm py-0.5' }, 'Hardware effects', h('input', { type: 'checkbox', checked: !!sc.hw, onchange: (e) => { sc.hw = e.target.checked; save(); } })))),
             h('div', { class: 'space-y-3' },
                 card('Reference changes', h('table', { class: 'text-sm' },
-                    h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 't (s)'), h('th', {}, 'θ_r (deg)'), h('th', {}, 'ψ_r (deg)'), h('th', {}, 'ramp (s)'), h('th', {})), refRows),
+                    h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 't (s)'), h('th', {}, '$\\theta_r$ (deg)'), h('th', {}, '$\\psi_r$ (deg)'), h('th', {}, 'ramp (s)'), h('th', {})), refRows),
                     h('div', { class: 'mt-2' }, btn('+ Add change', () => { const l = sc.refs[sc.refs.length - 1]; sc.refs.push({ t: Math.min(sc.T, l.t + 10), theta: l.theta, psi: l.psi, ramp: 0 }); save(); render(); })),
                     h('div', { class: 'text-xs text-slate-500 mt-1' }, 'ramp = 0 gives a step; otherwise the reference moves linearly over that many seconds.')),
                 card('Disturbance torques', h('table', { class: 'text-sm' },
-                    h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 't (s)'), h('th', {}, 'for (s)'), h('th', {}, 'axis'), h('th', {}, 'τ (N m)'), h('th', {})), distRows),
+                    h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 't (s)'), h('th', {}, 'for (s)'), h('th', {}, 'axis'), h('th', {}, '$\\tau$ (N m)'), h('th', {})), distRows),
                     h('div', { class: 'mt-2' }, btn('+ Add disturbance', () => { (sc.dists = sc.dists || []).push({ t: 10, dur: 0.5, axis: 'theta', tau: -0.3 }); save(); render(); }))),
                 card('Faults (diagnosis and prognosis)', h('div', { class: 'overflow-x-auto' }, h('table', { class: 'text-sm' },
                     h('tr', { class: 'text-xs text-slate-500' }, h('th', {}, 'fault'), h('th', {}, 'where'), h('th', {}, 'from t (s)'), h('th', {}, 'size'), h('th', {}, 'ramp (s)'), h('th', {})), faultRows)),
@@ -710,7 +736,7 @@
         const { ref } = D.scenarioFns(st.scenario);
         const t = [], th = [], ps = [];
         for (let k = 0; k <= 400; k++) { const tt = st.scenario.T * k / 400; const r = ref(tt); t.push(tt); th.push(r.theta / DEG); ps.push(r.psi / DEG); }
-        plot(cv, [{ panel: 0, x: t, y: th, color: COLORS[3], label: 'θ_r' }, { panel: 1, x: t, y: ps, color: COLORS[0], label: 'ψ_r' }], ['θ_r (deg)', 'ψ_r (deg)'],
+        plot(cv, [{ panel: 0, x: t, y: th, color: COLORS[3], label: '$\\theta_r$' }, { panel: 1, x: t, y: ps, color: COLORS[0], label: '$\\psi_r$' }], ['$\\theta_r$ (deg)', '$\\psi_r$ (deg)'],
              { vlines: (st.scenario.faults || []).map(f => ({ x: f.t, color: '#dc2626', label: 'fault' })) });
     }
 
@@ -719,7 +745,7 @@
         const rows = st.specs.map(s0 => h('tr', { class: 'border-b border-slate-100 dark:border-slate-800' },
             h('td', { class: 'py-1' }, h('input', { type: 'checkbox', checked: s0.on, 'aria-label': `Check ${s0.label}`, onchange: (e) => { s0.on = e.target.checked; save(); } })),
             h('td', { class: 'pr-4 text-sm' }, s0.label),
-            h('td', { class: 'text-sm text-slate-500 pr-2' }, '≤'),
+            h('td', { class: 'text-sm text-slate-500 pr-2' }, '$\\le$'),
             h('td', {}, h('input', { class: 'w-24 px-1 py-0.5 border rounded text-right font-mono text-sm', value: s0.limit, 'aria-label': `${s0.label} limit${s0.unit ? ' (' + s0.unit + ')' : ''}`, onchange: (e) => { s0.limit = parseFloat(e.target.value); save(); } })),
             h('td', { class: 'text-xs text-slate-500 pl-1' }, s0.unit)));
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
@@ -739,7 +765,7 @@
                     h('li', {}, 'Each spec takes the worst event of the test. Specs a test does not exercise show n/a.'),
                     h('li', {}, 'Instructors can export a spec sheet and share it with students.')),
                 h('div', { class: 'text-xs font-bold uppercase tracking-wide text-slate-500 mt-4 mb-1' }, 'Health monitor'),
-                numField('Threshold scale', st.metricCfg.health.thrScale, (v) => { st.metricCfg.health.thrScale = parseFloat(v); save(); }, '×', 'Multiplies the residual thresholds (0.02, 0.005, 0.01 N m on elevation, pitch, travel; ×1.5 with hardware effects)'),
+                numField('Threshold scale', st.metricCfg.health.thrScale, (v) => { st.metricCfg.health.thrScale = parseFloat(v); save(); }, '×', 'Multiplies the residual thresholds (0.02, 0.005, 0.01 N m on elevation, pitch, travel; $\\times 1.5$ with hardware effects)'),
                 numField('Alarm dwell', st.metricCfg.health.dwell, (v) => { st.metricCfg.health.dwell = parseFloat(v); save(); }, 's', 'The statistic must stay above 1 this long to raise an alarm'),
                 numField('End of life', st.metricCfg.health.eolEta * 100, (v) => { st.metricCfg.health.eolEta = parseFloat(v) / 100; save(); }, '% thrust', 'Remaining useful life is predicted to the time the estimated thrust effectiveness reaches this level'),
                 h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Detection specs apply only to tests that contain a fault.'))));
@@ -806,7 +832,7 @@
                 h('td', { class: 'pl-2 font-bold ' + (c.pass === null ? 'text-slate-400' : c.pass ? 'text-emerald-600' : 'text-rose-600') }, c.pass === null ? 'n/a' : c.pass ? '✓' : '✗')))));
         const ev = card('Events', h('table', { class: 'w-full text-xs' },
             h('tr', { class: 'text-slate-500 text-left' }, ['axis', 'type', 't (s)', 'from → to (deg)', 'OS %', 'rise (s)', 'settle (s)', 'ss err (deg)', 'peak dev (deg)'].map(x => h('th', { class: 'pr-2' }, x))),
-            sel.metrics.events.map(e => h('tr', {}, h('td', {}, e.axis), h('td', {}, e.type), h('td', {}, fmt(e.t, 1)),
+            sel.metrics.events.map(e => h('tr', {}, h('td', {}, SIG_TEX[e.axis] || e.axis), h('td', {}, e.type), h('td', {}, fmt(e.t, 1)),
                 h('td', {}, e.type === 'disturbance' ? '' : `${e.from} → ${e.to}`), h('td', {}, fmt(e.overshootPct, 1)), h('td', {}, fmt(e.riseTime)),
                 h('td', {}, e.type === 'disturbance' ? fmt(e.recoveryTime) : fmt(e.settlingTime)), h('td', {}, fmt(e.steadyStateErrDeg, 3)), h('td', {}, fmt(e.maxDeviationDeg))))),
             h('div', { class: 'text-xs text-slate-500 mt-2' }, `Peak voltage ${fmt(sel.metrics.vmax)} V · saturated ${fmt(sel.metrics.satPct, 1)} % of the time · on pitch stop ${fmt(sel.metrics.pitchStopTime)} s · plant: ${sel.scenario.preset}${sel.scenario.hw ? ' + hardware effects' : ''}`));
@@ -827,7 +853,7 @@
         series.push({ panel: 0, x: sel.t, y: sel.ref.map(v => v[0] / DEG), color: '#0b0b0b', dash: [5, 4], w: 1 });
         series.push({ panel: 1, x: sel.t, y: sel.ref.map(v => v[1] / DEG), color: '#0b0b0b', dash: [5, 4], w: 1 });
         const P = sel.P;
-        plot(cv, series, ['θ elevation (deg)', 'ψ travel (deg)', 'φ pitch (deg)', 'V_f (V)', 'V_b (V)'],
+        plot(cv, series, ['$\\theta$ elevation (deg)', '$\\psi$ travel (deg)', '$\\phi$ pitch (deg)', '$V_f$ (V)', '$V_b$ (V)'],
              { hlines: { 2: [P.phMax / DEG, -P.phMax / DEG], 3: [P.Vmax], 4: [P.Vmax] } });
     }
     // Health monitor view: detection statistic, residual torques, thrust-health estimate and RUL
@@ -851,8 +877,8 @@
             ['Isolation', hm.isolatedAs ? hm.isolatedAs + (est ? ' · ' + est : '') : '—'],
             ['Prognosis', !(hm.prog && hm.prog.sustained) ? 'no sustained degradation trend, so no life prediction' :
                 `end of life = ${fmt(hm.eolEta * 100, 0)} % thrust. ` + (hm.tEol !== null
-                    ? (hm.prog.tAccurate !== null ? `The predicted remaining life stays within ±10 % of the truth from t = ${fmt(hm.prog.tAccurate, 0)} s, ${fmt(hm.prog.horizon, 0)} s before end of life (true end of life ${fmt(hm.tEol, 1)} s).`
-                                                  : `The prediction never settles within ±10 % of the truth (true end of life ${fmt(hm.tEol, 1)} s).`)
+                    ? (hm.prog.tAccurate !== null ? `The predicted remaining life stays within $\\pm 10$ % of the truth from t = ${fmt(hm.prog.tAccurate, 0)} s, ${fmt(hm.prog.horizon, 0)} s before end of life (true end of life ${fmt(hm.tEol, 1)} s).`
+                                                  : `The prediction never settles within $\\pm 10$ % of the truth (true end of life ${fmt(hm.tEol, 1)} s).`)
                     : `Latest prediction: ${fmt(hm.prog.last.rul, 1)} s remaining at t = ${fmt(hm.prog.last.t, 0)} s.`)]
         ];
         const cvh = h('canvas', { class: 'w-full', style: 'height:' + (rulNow.length ? 420 : 300) + 'px' });
@@ -861,13 +887,13 @@
             sel.scenario.preset !== 'nominal' ? h('div', { class: 'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-2' },
                 'This test uses the identified plant set, but the monitor uses the nominal model. Alarms here can come from the model mismatch itself: a monitor is only as good as its model.') : null,
             cvh,
-            h('div', { class: 'text-xs text-slate-500 mt-2' }, 'The monitor knows only the nominal model, the commanded voltages and the measured angles and rates. r is the torque on each axis that the model cannot explain (a generalized-momentum observer); the statistic is r over its threshold, and an alarm needs it above 1 for the dwell time. Isolation fits r to the signatures of a thrust loss on each rotor and of extra travel friction. Note how the tracking plots above can look normal while r shows the fault: integral action hides it.'));
+            h('div', { class: 'text-xs text-slate-500 mt-2' }, 'The monitor knows only the nominal model, the commanded voltages and the measured angles and rates. $r$ is the torque on each axis that the model cannot explain (a generalized-momentum observer); the statistic is $r$ over its threshold, and an alarm needs it above 1 for the dwell time. Isolation fits $r$ to the signatures of a thrust loss on each rotor and of extra travel friction. Note how the tracking plots above can look normal while $r$ shows the fault: integral action hides it.'));
         const draw = () => {
             const t = sel.t, series = [
                 { panel: 0, x: t, y: sel.s, color: '#4a3aa7', label: 'statistic' },
-                { panel: 1, x: t, y: sel.r.map(v => v[0]), color: COLORS[3], label: 'r_θ' }, { panel: 1, x: t, y: sel.r.map(v => v[1] * 4), color: COLORS[6], label: 'r_φ ×4' },
-                { panel: 1, x: t, y: sel.r.map(v => v[2] * 2), color: COLORS[0], label: 'r_ψ ×2' }];
-            const labels = ['statistic', 'r (N m)'];
+                { panel: 1, x: t, y: sel.r.map(v => v[0]), color: COLORS[3], label: '$r_\\theta$' }, { panel: 1, x: t, y: sel.r.map(v => v[1] * 4), color: COLORS[6], label: '$4\\,r_\\phi$' },
+                { panel: 1, x: t, y: sel.r.map(v => v[2] * 2), color: COLORS[0], label: '$2\\,r_\\psi$' }];
+            const labels = ['statistic', '$r$ (N m)'];
             const pts = []; (hm.etaHat || []).forEach((v, k) => { if (v !== null) pts.push(k); });
             series.push({ panel: 2, x: t, y: sel.eta.map(e => (e[0] + e[1]) / 2 * 100), color: '#0b0b0b', dash: [5, 4], w: 1, label: 'true (mean of the rotors)' });
             series.push({ panel: 2, x: pts.map(k => t[k] - (hm.lag || 0)), y: pts.map(k => hm.etaHat[k] * 100), color: '#dc2626', label: 'estimated' });
@@ -908,12 +934,12 @@
         const a = st.analysis; if (!a) return;
         const poles = a.poles;
         const pz = h('div', { id: 'studio-splane' });
-        const tbl = h('table', { class: 'text-xs w-full' }, h('tr', { class: 'text-slate-500 text-left' }, ['Re (1/s)', 'Im (rad/s)', 'ω_n (rad/s)', 'ζ'].map(x => h('th', {}, x))),
-            poles.filter(p => p.im >= -1e-9).map(p => h('tr', { class: p.re >= 0 ? 'text-rose-600 font-bold' : '' }, h('td', { class: 'font-mono' }, p.re.toFixed(3)), h('td', { class: 'font-mono' }, Math.abs(p.im) < 1e-9 ? '0' : '±' + Math.abs(p.im).toFixed(3)), h('td', { class: 'font-mono' }, p.wn.toFixed(3)), h('td', { class: 'font-mono' }, p.zeta.toFixed(3)))));
-        const mt = h('table', { class: 'text-xs w-full' }, h('tr', { class: 'text-slate-500 text-left' }, ['Loop (broken at)', 'PM (deg) @ ω', 'GM↑ (dB) @ ω', 'GM↓ (dB) @ ω'].map(x => h('th', {}, x))),
+        const tbl = h('table', { class: 'text-xs w-full' }, h('tr', { class: 'text-slate-500 text-left' }, ['$\\mathrm{Re}$ (1/s)', '$\\mathrm{Im}$ (rad/s)', '$\\omega_n$ (rad/s)', '$\\zeta$'].map(x => h('th', {}, x))),
+            poles.filter(p => p.im >= -1e-9).map(p => h('tr', { class: p.re >= 0 ? 'text-rose-600 font-bold' : '' }, h('td', { class: 'font-mono' }, p.re.toFixed(3)), h('td', { class: 'font-mono' }, Math.abs(p.im) < 1e-9 ? '0' : '$\\pm$' + Math.abs(p.im).toFixed(3)), h('td', { class: 'font-mono' }, p.wn.toFixed(3)), h('td', { class: 'font-mono' }, p.zeta.toFixed(3)))));
+        const mt = h('table', { class: 'text-xs w-full' }, h('tr', { class: 'text-slate-500 text-left' }, ['Loop (broken at)', 'PM (deg) @ $\\omega$', '$\\mathrm{GM}_{\\uparrow}$ (dB) @ $\\omega$', '$\\mathrm{GM}_{\\downarrow}$ (dB) @ $\\omega$'].map(x => h('th', {}, x))),
             a.channels.map(c => h('tr', {}, h('td', {}, c.name),
                 h('td', { class: 'font-mono' }, c.pm ? `${c.pm.pmDeg.toFixed(1)} @ ${c.pm.w.toFixed(2)}` : '—'),
-                h('td', { class: 'font-mono' }, c.gmUp ? `${c.gmUp.gmDb.toFixed(1)} @ ${c.gmUp.w.toFixed(2)}` : '∞'),
+                h('td', { class: 'font-mono' }, c.gmUp ? `${c.gmUp.gmDb.toFixed(1)} @ ${c.gmUp.w.toFixed(2)}` : '$\\infty$'),
                 h('td', { class: 'font-mono' }, c.gmDown ? `${c.gmDown.gmDb.toFixed(1)} @ ${c.gmDown.w.toFixed(2)}` : '—'))));
         const bode = h('canvas', { id: 'studio-bode', class: 'w-full', style: 'height:420px' });
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
@@ -925,12 +951,12 @@
                     a.operatingPoint.drift > 1e-6 ? h('div', { class: 'text-xs text-amber-700 mt-1' }, 'The controller did not settle to a steady hover in 60 s, so the linearisation point may be inaccurate.') : null),
                 card('s-plane', pz), card('Poles', tbl)),
             h('div', { class: 'col-span-2 space-y-3' }, card('Loop margins (one loop broken, the other closed)', mt,
-                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Collective = common voltage (elevation); cyclic = difference voltage (pitch and, through it, travel). GM↓ is the gain-reduction margin typical of loops around double integrators.')),
-                card('Loop transfer functions L(jω)', bode))));
+                h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Collective = common voltage (elevation); cyclic = difference voltage (pitch and, through it, travel). $\\mathrm{GM}_{\\downarrow}$ is the gain-reduction margin typical of loops around double integrators.')),
+                card('Loop transfer functions $L(j\\omega)$', bode))));
         drawSPlane(pz, poles);
         const ser = [];
         a.channels.forEach((c, i) => { ser.push({ panel: 0, x: c.w, y: c.magDb, color: COLORS[i], label: c.name, w: 1.6 }); ser.push({ panel: 1, x: c.w, y: c.phaseDeg, color: COLORS[i], w: 1.6 }); });
-        plot(bode, ser, ['|L| (dB)', '∠L (deg)'], { logx: true, hlines: { 0: [0], 1: [-540, -180, 180] }, xlabel: 'ω (rad/s)', xmax: 300 });
+        plot(bode, ser, ['$|L|$ (dB)', '$\\angle L$ (deg)'], { logx: true, hlines: { 0: [0], 1: [-540, -180, 180] }, xlabel: '$\\omega$ (rad/s)', xmax: 300 });
     }
     function drawSPlane(container, poles) {
         const W = 360, Hh = 260, NS = 'http://www.w3.org/2000/svg';
@@ -974,6 +1000,7 @@
             cv._ro.observe(cv);
         }
     }
+    window.addEventListener('mathui-fonts', () => document.querySelectorAll('#studio canvas').forEach(c => { if (c._plotArgs && c.isConnected) drawPlot(c, ...c._plotArgs); }));
     function drawPlot(cv, series, labels, opt = {}) {
         const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 800, Hh = cv.clientHeight || 300;
         cv.width = W * dpr; cv.height = Hh * dpr;
@@ -981,7 +1008,7 @@
         // text alternative: what is plotted; the numbers are in the adjacent tables and in the CSV/JSON export
         const names = [...new Set(series.filter(s0 => s0.label).map(s0 => s0.label))];
         cv.setAttribute('role', 'img');
-        cv.setAttribute('aria-label', 'Plot of ' + labels.join(', ') + ' versus ' + (opt.xlabel || 't (s)') + (names.length ? '; series: ' + names.join(', ') : '') +
+        cv.setAttribute('aria-label', 'Plot of ' + labels.map(mplain).join(', ') + ' versus ' + mplain(opt.xlabel || 't (s)') + (names.length ? '; series: ' + names.map(mplain).join(', ') : '') +
             '. The values are listed in the tables on this tab and can be exported as CSV.');
         const np = labels.length, L = 62, R = 12, TOP = 8, BOT = 26, gap = 10, ph = (Hh - TOP - BOT - gap * (np - 1)) / np;
         let x0 = Infinity, x1 = -Infinity;
@@ -991,6 +1018,9 @@
         const css = getComputedStyle(document.documentElement);
         const ink = '#52514e', grid = '#e4e3df';
         ctx.font = '11px Inter, sans-serif';
+        // text with optional $...$ math, in the current fill colour; returns its width
+        const ctext = (str, x, y, align) => MU ? MU.drawText(ctx, str, x, y, { size: 11, align })
+            : (ctx.textAlign = align, ctx.fillText(String(str).replace(/\$/g, ''), x, y), ctx.measureText(String(str).replace(/\$/g, '')).width);
         for (let p = 0; p < np; p++) {
             const top = TOP + p * (ph + gap);
             let y0 = Infinity, y1 = -Infinity;
@@ -1006,8 +1036,8 @@
             for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step) { const yy = fy(v); ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(W - R, yy); ctx.stroke(); ctx.fillText(+v.toFixed(6) + '', L - 4, yy + 4); }
             ((opt.hlines || {})[p] || []).forEach(v => { if (v < y0 || v > y1) return; ctx.save(); ctx.strokeStyle = '#b4b2a8'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(L, fy(v)); ctx.lineTo(W - R, fy(v)); ctx.stroke(); ctx.restore(); });
             (opt.vlines || []).forEach(m => { if (m.x < x0 || m.x > x1) return; ctx.save(); ctx.strokeStyle = m.color; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(fx(m.x), top); ctx.lineTo(fx(m.x), top + ph); ctx.stroke();
-                if (p === 0 && m.label) { ctx.fillStyle = m.color; ctx.textAlign = 'left'; ctx.fillText(m.label, fx(m.x) + 3, top + ph - 5); } ctx.restore(); });
-            ctx.save(); ctx.translate(12, top + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillText(labels[p], 0, 0); ctx.restore();
+                if (p === 0 && m.label) { ctx.fillStyle = m.color; ctext(m.label, fx(m.x) + 3, top + ph - 5, 'left'); } ctx.restore(); });
+            ctx.save(); ctx.translate(12, top + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctext(labels[p], 0, 0, 'center'); ctx.restore();
             ctx.save(); ctx.beginPath(); ctx.rect(L, top, W - L - R, ph); ctx.clip();
             for (const s0 of series) if (s0.panel === p) {
                 ctx.strokeStyle = s0.color; ctx.lineWidth = s0.w || 1.5; ctx.setLineDash(s0.dash || []); ctx.beginPath();
@@ -1023,12 +1053,12 @@
         }
         ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.setLineDash([]);
         const yb = Hh - 8;
-        if (opt.logx) { for (let e = Math.ceil(Math.log10(x0)); e <= Math.log10(x1); e++) ctx.fillText('10^' + e, fx(Math.pow(10, e)), yb); }
+        if (opt.logx) { for (let e = Math.ceil(Math.log10(x0)); e <= Math.log10(x1); e++) ctext('$10^{' + e + '}$', fx(Math.pow(10, e)), yb, 'center'); }
         else { const st0 = niceStep((x1 - x0) / 8); for (let v = Math.ceil(x0 / st0) * st0; v <= x1 + 1e-9; v += st0) ctx.fillText(+v.toFixed(3) + '', fx(v), yb); }
-        ctx.textAlign = 'right'; ctx.fillText(opt.xlabel || 't (s)', W - R, yb - 12);
+        ctext(opt.xlabel || '$t$ (s)', W - R, yb - 12, 'right');
         const leg = series.filter(s0 => s0.label);
         let lx = L + 8; ctx.textAlign = 'left';
-        for (const s0 of leg) { ctx.fillStyle = s0.color; ctx.fillRect(lx, TOP + 6, 14, 3); ctx.fillStyle = ink; ctx.fillText(s0.label, lx + 18, TOP + 11); lx += ctx.measureText(s0.label).width + 34; }
+        for (const s0 of leg) { ctx.fillStyle = s0.color; ctx.fillRect(lx, TOP + 6, 14, 3); ctx.fillStyle = ink; lx += ctext(s0.label, lx + 18, TOP + 11, 'left') + 34; }
         void css;
     }
     function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(Math.abs(raw) || 1))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
@@ -1040,7 +1070,15 @@
         try { if (st.ai.remember && st.ai.key) localStorage.setItem('3dof-studio-ai-key', JSON.stringify(st.ai.key)); else localStorage.removeItem('3dof-studio-ai-key'); } catch (e) { /* storage unavailable */ }
     };
     const esc = (t) => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-    const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code class="px-1 bg-slate-100 rounded">$1</code>')
+    const md = (t) => {
+        const keep = [];
+        const put = (tex, disp) => { keep.push(MU ? (disp ? '<div class="my-1 overflow-x-auto">' : '') + MU.html('$' + tex.replace(/\$/g, '') + '$') + (disp ? '</div>' : '') : esc(tex)); return '\u0000' + (keep.length - 1) + '\u0000'; };
+        t = String(t).replace(/\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g, (m0, a, b) => put(a || b, true))
+                     .replace(/\\\(([\s\S]+?)\\\)/g, (m0, a) => put(a, false))
+                     .replace(/(^|[^\\\w])\$([^\s$](?:[^$\n]*?[^\s$])?)\$(?!\d)/g, (m0, pre, a) => pre + put(a, false));
+        return mdText(t).replace(/\\\$/g, '$').replace(/\u0000(\d+)\u0000/g, (m0, k) => keep[+k]);
+    };
+    const mdText = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code class="px-1 bg-slate-100 rounded">$1</code>')
         .replace(/^\s*[-*] (.*)$/gm, '• $1').replace(/\n/g, '<br>');
     function tutorCtx() {
         return { getDesign: () => st.design, getScenario: () => st.scenario, specs: st.specs, metricCfg: st.metricCfg,
