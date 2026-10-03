@@ -367,6 +367,19 @@
             font-size: 13px; line-height: 1.35; color: #475569; box-shadow: 0 10px 28px rgba(15,23,42,.18);
             opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
         #lab-tip.show { opacity: 1; transform: none; }
+        /* accessibility: visible keyboard focus everywhere (WCAG 2.4.7) */
+        :focus-visible { outline: 2px solid #4f46e5 !important; outline-offset: 2px; }
+        input[type=range]:focus-visible { outline: 2px solid #4f46e5 !important; outline-offset: 3px; border-radius: 4px; }
+        input.peer:focus-visible + div { outline: 2px solid #4f46e5; outline-offset: 2px; }
+        canvas:focus-visible { outline-offset: -3px; }
+        #studio-diagram g[role=button]:focus-visible { outline: none !important; }
+        #studio-diagram g[role=button]:focus-visible rect { stroke: #4f46e5; stroke-width: 3.5; stroke-dasharray: 5 3; }
+        /* pause (WCAG 2.2.2) and reduced motion (2.3.3) */
+        body.lab-paused .cd-flow, body.lab-paused .animate-pulse, body.lab-paused .spinner { animation: none !important; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+            .cd-flow { display: none; }
+        }
         @media (max-width: 1200px) { #lab-toolbar .lab-title { display: none; } }
         @media (max-width: 1100px) {
             #studio-body .grid-cols-4, #studio-body .grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -387,6 +400,10 @@
             .right-panel { overflow-y: auto; }
             .copyright-badge { display: none; }
         }
+        @media (max-width: 560px) {   /* icon-only toolbar on phones; the labels stay available to screen readers */
+            #lab-toolbar button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+            #lab-toolbar button { padding-left: 11px; padding-right: 11px; }
+        }
     </style>
     <!-- Three.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -396,14 +413,15 @@
 <body>
 
     <!-- Loading Screen -->
-    <div id="loading">
+    <div id="loading" aria-hidden="true">
         <div class="spinner mb-4"></div>
         <h2 class="text-2xl font-semibold text-blue-600 tracking-wider">INITIALIZING 3-DOF SYSTEM</h2>
         <p class="text-slate-500 mt-2">Loading dynamics and control systems...</p>
     </div>
 
     <!-- 3D Canvas Container -->
-    <div id="canvas-container"></div>
+    <h1 class="sr-only">Quanser 3-DOF Helicopter Control Design Lab</h1>
+    <div id="canvas-container" role="region" aria-label="3-D view of the helicopter. Focus it and use the arrow keys to orbit and plus or minus to zoom."></div>
 
     <!-- UI Overlay Layer -->
     <div id="ui-layer">
@@ -411,14 +429,16 @@
         <!-- Toolbar: show/hide panels and re-frame the 3-D view -->
         <div id="lab-toolbar" role="toolbar" aria-label="View">
             <span class="lab-title">3-DOF Helicopter Lab</span>
-            <button id="btn-toggle-left" type="button" title="Show or hide telemetry and plots" aria-pressed="true"><i class="fa-solid fa-chart-line"></i><span>Plots</span></button>
-            <button id="btn-toggle-right" type="button" title="Show or hide the controls" aria-pressed="true"><i class="fa-solid fa-sliders"></i><span>Controls</span></button>
-            <button id="btn-fit" type="button" title="Centre and fit the 3-D view"><i class="fa-solid fa-expand"></i><span>Fit view</span></button>
+            <button id="btn-toggle-left" type="button" title="Show or hide telemetry and plots" aria-pressed="true"><i class="fa-solid fa-chart-line" aria-hidden="true"></i><span>Plots</span></button>
+            <button id="btn-toggle-right" type="button" title="Show or hide the controls" aria-pressed="true"><i class="fa-solid fa-sliders" aria-hidden="true"></i><span>Controls</span></button>
+            <button id="btn-fit" type="button" title="Centre and fit the 3-D view"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>Fit view</span></button>
+            <button id="btn-pause" type="button" title="Pause or resume the simulation and all animation" aria-pressed="false"><i class="fa-solid fa-pause" aria-hidden="true"></i><span>Pause</span></button>
+            <button id="btn-keys" type="button" title="Turn the W/S and Up/Down motor keys on or off" aria-pressed="true" class="on"><i class="fa-solid fa-keyboard" aria-hidden="true"></i><span>Motor keys</span></button>
         </div>
 
 
         <!-- Left Panel: Telemetry + Plots -->
-        <div class="left-panel">
+        <div class="left-panel" role="region" aria-label="Telemetry and time history plots">
 
             <!-- Telemetry -->
             <div class="interactive-panel rounded-xl px-4 py-3 shadow-lg border-l-4 border-l-blue-500">
@@ -455,29 +475,29 @@
                 </div>
                 <div class="plot-block">
                     <div class="panel-heading panel-heading-semibold text-blue-500 mb-0.5">ψ Travel</div>
-                    <canvas id="plot-travel"></canvas>
+                    <canvas id="plot-travel" role="img" aria-label="Travel angle psi versus time, actual and setpoint. Values are shown in the telemetry above and can be exported as CSV."></canvas>
                 </div>
                 <div class="plot-block">
                     <div class="panel-heading panel-heading-semibold text-amber-500 mb-0.5">θ Elevation</div>
-                    <canvas id="plot-elevation"></canvas>
+                    <canvas id="plot-elevation" role="img" aria-label="Elevation angle theta versus time, actual and setpoint."></canvas>
                 </div>
                 <div class="plot-block">
                     <div class="panel-heading panel-heading-semibold text-violet-500 mb-0.5">φ Pitch</div>
-                    <canvas id="plot-pitch"></canvas>
+                    <canvas id="plot-pitch" role="img" aria-label="Pitch angle phi versus time, actual and setpoint."></canvas>
                 </div>
                 <div class="plot-block">
                     <div class="panel-heading panel-heading-semibold text-emerald-600 mb-0.5">V<sub>f</sub> Front Motor (V<sub>coll</sub> + V<sub>cyc</sub>)</div>
-                    <canvas id="plot-motor1"></canvas>
+                    <canvas id="plot-motor1" role="img" aria-label="Front motor voltage versus time."></canvas>
                 </div>
                 <div class="plot-block">
                     <div class="panel-heading panel-heading-semibold text-rose-500 mb-0.5">V<sub>b</sub> Back Motor (V<sub>coll</sub> - V<sub>cyc</sub>)</div>
-                    <canvas id="plot-motor2"></canvas>
+                    <canvas id="plot-motor2" role="img" aria-label="Back motor voltage versus time."></canvas>
                 </div>
             </div>
         </div>
 
         <!-- Right Panel: Autopilot + Motors -->
-        <div class="right-panel">
+        <div class="right-panel" role="region" aria-label="Controls">
 
             <!-- Design Studio -->
             <div class="interactive-panel rounded-xl p-3 shadow-lg border-l-4 border-l-fuchsia-500">
@@ -493,18 +513,18 @@
                     <h3 class="panel-heading text-indigo-700"><span id="mode-label">MANUAL</span></h3>
                     <div class="flex items-center gap-2">
                         <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="toggle-mode" class="sr-only peer">
+                            <input type="checkbox" id="toggle-mode" class="sr-only peer" aria-label="Autopilot (closed-loop control)">
                             <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
                         </label>
-                        <button id="reset-btn" class="hover:bg-slate-100 text-slate-700 p-2 rounded-full transition-colors group" title="Reset Simulation">
+                        <button id="reset-btn" class="hover:bg-slate-100 text-slate-700 p-2 rounded-full transition-colors group" title="Reset Simulation" aria-label="Reset simulation">
                             <i class="fa-solid fa-arrow-rotate-right group-hover:-rotate-180 transition-transform duration-500"></i>
                         </button>
                     </div>
                 </div>
-                <div id="autopilot-controls" class="opacity-50 pointer-events-none transition-opacity space-y-2">
+                <div id="autopilot-controls" inert class="opacity-50 pointer-events-none transition-opacity space-y-2">
                     <div>
                         <label class="text-sm font-semibold text-slate-500 block mb-1">Algorithm</label>
-                        <select id="select-controller" class="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded p-1 outline-none">
+                        <select id="select-controller" aria-label="Control algorithm" class="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded p-1 outline-none">
                             <option value="pid">Cascaded PID</option>
                             <option value="lqr">LQR with integral action (LQR-I)</option>
                         </select>
@@ -514,14 +534,14 @@
                             <span>ψ Target Travel</span>
                             <span id="val-target-travel" class="text-indigo-700">0°</span>
                         </div>
-                        <input type="range" id="slider-target-travel" min="-180" max="180" value="0" step="1">
+                        <input type="range" id="slider-target-travel" aria-label="Target travel (degrees)" aria-valuetext="0 degrees" min="-180" max="180" value="0" step="1">
                     </div>
                     <div>
                         <div class="flex justify-between text-sm font-semibold text-slate-500 mb-1">
                             <span>θ Target Elevation</span>
                             <span id="val-target-elev" class="text-indigo-700">-25°</span>
                         </div>
-                        <input type="range" id="slider-target-elev" min="-25" max="34" value="-25" step="1">
+                        <input type="range" id="slider-target-elev" aria-label="Target elevation (degrees)" aria-valuetext="-25 degrees" min="-25" max="34" value="-25" step="1">
                     </div>
                     <button id="btn-random-targets" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-sm font-semibold rounded p-1.5 transition-colors">
                         <i class="fa-solid fa-dice mr-1"></i> Random ψ/θ Targets
@@ -536,13 +556,13 @@
                         </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-realism" class="sr-only peer">
+                        <input type="checkbox" id="toggle-realism" class="sr-only peer" aria-label="Hardware effects (encoder quantisation, filtered rates, motor lag)">
                         <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
                     </label>
                 </div>
                 <div class="mt-2 pt-2 border-t border-slate-200">
                     <label class="text-sm font-semibold text-slate-500 block mb-1">Plant parameters</label>
-                    <select id="select-preset" class="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded p-1 outline-none">
+                    <select id="select-preset" aria-label="Plant parameters" class="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded p-1 outline-none">
                         <option value="nominal">Quanser nominal</option>
                         <option value="identified">Identified rig (Ruf 2014)</option>
                     </select>
@@ -559,7 +579,7 @@
                         </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-params" class="sr-only peer">
+                        <input type="checkbox" id="toggle-params" class="sr-only peer" aria-label="Show parameters board on the 3-D model">
                         <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
                     </label>
                 </div>
@@ -572,7 +592,7 @@
                         </div>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="toggle-dimensions" class="sr-only peer">
+                        <input type="checkbox" id="toggle-dimensions" class="sr-only peer" aria-label="Show dimensions on the 3-D model">
                         <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                     </label>
                 </div>
@@ -592,10 +612,10 @@
                             <div class="font-mono text-slate-700">V<sub>b</sub> = V<sub>coll</sub> - V<sub>cyc</sub></div>
                         </div>
                     </div>
-                    <span class="text-sm text-slate-400">W / S</span>
+                    <span class="text-sm text-slate-400" aria-hidden="true">W / S</span>
                     <span class="text-sm font-mono font-bold text-slate-800" id="val-front">0.00 V</span>
                 </div>
-                <input type="range" id="slider-front" min="0" max="1000" value="0" step="1">
+                <input type="range" id="slider-front" aria-label="Front motor voltage" aria-valuetext="0.00 volts" min="0" max="1000" value="0" step="1">
                 <div class="text-center mt-1 text-sm text-slate-400" id="hint-front"></div>
             </div>
 
@@ -613,15 +633,15 @@
                             <div class="font-mono text-slate-700">V<sub>b</sub> = V<sub>coll</sub> - V<sub>cyc</sub></div>
                         </div>
                     </div>
-                    <span class="text-sm text-slate-400">↑ / ↓</span>
+                    <span class="text-sm text-slate-400" aria-hidden="true">↑ / ↓</span>
                     <span class="text-sm font-mono font-bold text-slate-800" id="val-back">0.00 V</span>
                 </div>
-                <input type="range" id="slider-back" min="0" max="1000" value="0" step="1">
+                <input type="range" id="slider-back" aria-label="Back motor voltage" aria-valuetext="0.00 volts" min="0" max="1000" value="0" step="1">
                 <div class="text-center mt-1 text-sm text-slate-400" id="hint-back"></div>
             </div>
 
             <!-- Control Diagram -->
-            <div id="control-diagram-card" class="interactive-panel rounded-xl p-3 shadow-lg border-l-4 border-l-cyan-500">
+            <div id="control-diagram-card" tabindex="0" role="button" aria-expanded="false" aria-label="Control diagram. Press Enter to expand or collapse." class="interactive-panel rounded-xl p-3 shadow-lg border-l-4 border-l-cyan-500">
                 <div class="flex justify-between items-center mb-2">
                     <span class="panel-heading text-cyan-700">Control Diagram</span>
                     <div class="flex items-center gap-1.5">
@@ -638,11 +658,12 @@
 
         <div class="copyright-badge">&copy; Dr. Afshin Rahimi</div>
 
-        <div id="live-banner" class="hidden absolute top-[16px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-white/95 border border-emerald-300 shadow-lg rounded-xl px-4 py-2 flex items-center gap-3 text-sm">
-            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        <div id="lab-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <div id="live-banner" role="region" aria-label="Studio test in progress" class="hidden absolute top-[16px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-white/95 border border-emerald-300 shadow-lg rounded-xl px-4 py-2 flex items-center gap-3 text-sm">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true"></span>
             <span id="live-banner-text" class="font-semibold text-slate-700"></span>
             <button id="live-banner-results" class="hidden px-2 py-1 rounded-md bg-indigo-600 text-white font-semibold" onclick="Studio.open('results')">Open results</button>
-            <button class="px-2 py-1 rounded-md bg-slate-200 font-semibold" onclick="Sim3DOFApp.stopLive()">Stop</button>
+            <button type="button" class="px-2 py-1 rounded-md bg-slate-200 font-semibold" onclick="Sim3DOFApp.stopLive()">Stop</button>
         </div>
 
     </div>
@@ -702,6 +723,7 @@
         const inputs = { front: 0, back: 0 };
         const actuators = { front: 0, back: 0 };
         const keys = { w: false, s: false, ArrowUp: false, ArrowDown: false };
+        let labMotorKeys = true;
         let lastTime = performance.now();
 
 
@@ -1497,8 +1519,14 @@
                 return '<defs>' + colors.map((c, i) => '<marker id="cd-arrow-' + id + i + '" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">' +
                     '<path d="M0,0.5 L7.5,4 L0,7.5 Z" fill="' + c + '"/></marker>').join('') + '</defs>';
             }
+            const ALT = {
+                pid: 'Block diagram of the cascaded PID controller: the travel error drives an outer PID loop that sets a pitch reference; an inner PD loop on pitch gives the cyclic voltage; an elevation PID plus the hover voltage gives the collective voltage; front and back motor voltages drive the plant and the measured angles are fed back.',
+                lqr: 'Block diagram of the LQR controller with integral action: the state error vector (elevation, pitch and travel errors, their rates, and the integrals of the elevation and travel errors) is multiplied by the gain matrix K and subtracted from the hover voltage to give the front and back motor voltages; the measured states are fed back.'
+            };
+            let altKey = 'pid';
             function svg(W, H, body, cls) {
-                return '<svg class="' + cls + '" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' + body + '</svg>';
+                const alt = (cls === 'cd-full' ? 'Full ' : 'Compact ') + ALT[altKey].charAt(0).toLowerCase() + ALT[altKey].slice(1);
+                return '<svg class="' + cls + '" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + alt + '"><title>' + alt + '</title>' + body + '</svg>';
             }
 
             // marker index per colour, so arrowheads match their wires
@@ -1612,7 +1640,7 @@
             }
 
             return {
-                svg(type, anim) { return type === 'lqr' ? lqrCompact() + lqrFull(anim) : pidCompact() + pidFull(anim); }
+                svg(type, anim) { altKey = type === 'lqr' ? 'lqr' : 'pid'; return type === 'lqr' ? lqrCompact() + lqrFull(anim) : pidCompact() + pidFull(anim); }
             };
         })();
 
@@ -1689,6 +1717,7 @@
             if (!ui.controlDiagramCard || !ui.controlDiagramBackdrop) return;
             ui.controlDiagramCard.classList.toggle('expanded', expand);
             ui.controlDiagramBackdrop.classList.toggle('active', expand);
+            ui.controlDiagramCard.setAttribute('aria-expanded', expand ? 'true' : 'false');
         }
 
         function setupUIEventListeners() {
@@ -1702,10 +1731,16 @@
                 ui.controlDiagramBackdrop.addEventListener('click', () => {
                     setControlDiagramZoom(false);
                 });
+                ui.controlDiagramCard.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setControlDiagramZoom(!ui.controlDiagramCard.classList.contains('expanded'));
+                    }
+                });
 
                 window.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape' && ui.controlDiagramCard.classList.contains('expanded')) {
-                        setControlDiagramZoom(false);
+                        setControlDiagramZoom(false); ui.controlDiagramCard.focus();
                     }
                 });
             }
@@ -1716,7 +1751,7 @@
                 ui.modeLabel.textContent = e.target.checked ? 'AUTO' : 'MANUAL';
                 
                 if (state.mode === 'auto') {
-                    ui.autoControls.classList.remove('opacity-50', 'pointer-events-none');
+                    ui.autoControls.classList.remove('opacity-50', 'pointer-events-none'); ui.autoControls.inert = false;
                     ui.sliderFront.disabled = true;
                     ui.sliderBack.disabled = true;
                     ui.hintFront.textContent = 'Autopilot Active (shows Vf, Vb, Vcyc)';
@@ -1737,7 +1772,7 @@
                     ui.valTargetElev.textContent = currentElevDeg + '°';
                     state.targetElevation = currentElevDeg * Math.PI / 180;
                 } else {
-                    ui.autoControls.classList.add('opacity-50', 'pointer-events-none');
+                    ui.autoControls.classList.add('opacity-50', 'pointer-events-none'); ui.autoControls.inert = true;
                     ui.sliderFront.disabled = false;
                     ui.sliderBack.disabled = false;
                     ui.hintFront.textContent = 'Keyboard: W / S';
@@ -1837,7 +1872,18 @@
             });
 
             // Keyboard Dynamics Mapping
+            // W/S and Up/Down drive the motors only when the keys are switched on (toolbar), the studio is closed and
+            // focus is not in a form control or on the 3-D view (WCAG 2.1.1 / 2.1.4: shortcuts can be turned off).
+            const motorKeysAllowed = (e) => {
+                if (!labMotorKeys) return false;
+                const t = e.target;
+                if (t && (t.closest && (t.closest('input, select, textarea, button, [contenteditable], #studio, [role=button], [role=tab]')) || t === renderer.domElement)) return false;
+                const st = document.getElementById('studio'); if (st && !st.classList.contains('hidden') && getComputedStyle(st).display !== 'none') return false;
+                return true;
+            };
             window.addEventListener('keydown', e => {
+                if (!motorKeysAllowed(e)) return;
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
                 if(e.key.toLowerCase() === 'w') keys.w = true;
                 if(e.key.toLowerCase() === 's') keys.s = true;
                 if(e.key === 'ArrowUp') keys.ArrowUp = true;
@@ -1911,8 +1957,8 @@
         function labInitTips() {
             // Panel tooltips used to be absolutely positioned inside the scrolling panel: they were clipped and,
             // even when invisible, widened the panel (horizontal scrollbar). Show them in one fixed element instead.
-            const tip = document.createElement('div'); tip.id = 'lab-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip);
-            let current = null;
+            const tip = document.createElement('div'); tip.id = 'lab-tip'; tip.setAttribute('role', 'tooltip'); tip.setAttribute('aria-hidden', 'true'); document.body.appendChild(tip);
+            let current = null, tipN = 0;
             const place = (anchor) => {
                 const a = anchor.getBoundingClientRect(), t = tip.getBoundingClientRect(), W = window.innerWidth;
                 let x = Math.min(Math.max(8, a.left + a.width / 2 - t.width / 2), W - t.width - 8);
@@ -1920,13 +1966,18 @@
                 if (y < 8) y = a.bottom + 8;
                 tip.style.left = x + 'px'; tip.style.top = y + 'px';
             };
-            const show = (src, anchor) => { current = anchor; tip.innerHTML = src.innerHTML; tip.style.width = src.classList.contains('w-72') ? '288px' : '224px'; tip.classList.add('show'); place(anchor); };
-            const hide = () => { current = null; tip.classList.remove('show'); };
+            const show = (src, anchor) => { current = anchor; tip.innerHTML = src.innerHTML; tip.setAttribute('aria-hidden', 'false'); tip.style.width = src.classList.contains('w-72') ? '288px' : '224px'; tip.classList.add('show'); place(anchor); };
+            const hide = () => { current = null; tip.classList.remove('show'); tip.setAttribute('aria-hidden', 'true'); };
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) hide(); });
             document.querySelectorAll('#ui-layer .group > div.bottom-full').forEach(src => {
                 src.classList.add('lab-tip-src');
                 const group = src.parentElement;
                 const anchor = group.querySelector('.cursor-help') || group;
-                anchor.setAttribute('tabindex', '0'); anchor.setAttribute('aria-label', 'More information');
+                anchor.setAttribute('tabindex', '0'); anchor.setAttribute('role', 'button');
+                const name = (group.querySelector('span:not(.cursor-help)')?.textContent || '').trim();
+                anchor.setAttribute('aria-label', 'More information' + (name ? ' about ' + name : ''));
+                const did = 'lab-tipsrc-' + (++tipN); src.id = did; anchor.setAttribute('aria-describedby', did);
+                anchor.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current === anchor ? hide() : show(src, anchor); } });
                 group.addEventListener('mouseenter', () => show(src, anchor));
                 group.addEventListener('mouseleave', hide);
                 anchor.addEventListener('focus', () => show(src, anchor));
@@ -1944,9 +1995,50 @@
             document.getElementById('btn-toggle-left').onclick = () => labToggle('left');
             document.getElementById('btn-toggle-right').onclick = () => labToggle('right');
             document.getElementById('btn-fit').onclick = () => labFit(true);
+            labInitA11y();
             labSyncButtons(); labFit(true);
         }
-        window.LabUI = { toggle: labToggle, fit: labFit };
+        // ---- accessibility helpers (WCAG 2.1 AA): pause, motor-key switch, keyboard orbit, slider value text
+        function labSetPaused(on) {
+            simPaused = !!on; document.body.classList.toggle('lab-paused', simPaused);
+            const b = document.getElementById('btn-pause');
+            if (b) { b.setAttribute('aria-pressed', simPaused); b.classList.toggle('on', simPaused);
+                     b.querySelector('span').textContent = simPaused ? 'Resume' : 'Pause';
+                     b.querySelector('i').className = 'fa-solid ' + (simPaused ? 'fa-play' : 'fa-pause'); }
+        }
+        function labInitA11y() {
+            document.getElementById('btn-pause').onclick = () => labSetPaused(!simPaused);
+            document.getElementById('btn-keys').onclick = (e) => {
+                labMotorKeys = !labMotorKeys; keys.w = keys.s = keys.ArrowUp = keys.ArrowDown = false;
+                e.currentTarget.setAttribute('aria-pressed', labMotorKeys); e.currentTarget.classList.toggle('on', labMotorKeys);
+            };
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) controls.enableDamping = false;
+            // 3-D view: focusable, arrow keys orbit, +/- zoom, Home re-frames
+            const cv = renderer.domElement;
+            cv.tabIndex = 0; cv.setAttribute('role', 'application'); cv.setAttribute('aria-roledescription', '3-D view');
+            cv.setAttribute('aria-label', '3-D model of the Quanser 3-DOF helicopter. Arrow keys orbit the camera, plus and minus zoom, Home fits the view. The angles are given in the telemetry panel.');
+            cv.addEventListener('keydown', (e) => {
+                const off = camera.position.clone().sub(controls.target), sph = new THREE.Spherical().setFromVector3(off);
+                const d = Math.PI / 36;
+                if (e.key === 'ArrowLeft') sph.theta -= d; else if (e.key === 'ArrowRight') sph.theta += d;
+                else if (e.key === 'ArrowUp') sph.phi = Math.max(0.1, sph.phi - d); else if (e.key === 'ArrowDown') sph.phi = Math.min(controls.maxPolarAngle, sph.phi + d);
+                else if (e.key === '+' || e.key === '=') camera.zoom = Math.min(4, camera.zoom * 1.1);
+                else if (e.key === '-' || e.key === '_') camera.zoom = Math.max(0.3, camera.zoom / 1.1);
+                else if (e.key === 'Home') { labFit(true); e.preventDefault(); return; }
+                else return;
+                e.preventDefault();
+                camera.position.copy(controls.target).add(new THREE.Vector3().setFromSpherical(sph));
+                camera.updateProjectionMatrix(); controls.update();
+            });
+            // range sliders: speak the value with its unit (the visible readout next to each slider)
+            [['slider-target-travel', 'val-target-travel', 'degrees'], ['slider-target-elev', 'val-target-elev', 'degrees'],
+             ['slider-front', 'val-front', 'volts'], ['slider-back', 'val-back', 'volts']].forEach(([sid, vid, unit]) => {
+                const sl = document.getElementById(sid), out = document.getElementById(vid); if (!sl || !out) return;
+                const sync = () => sl.setAttribute('aria-valuetext', out.textContent.replace(/[°V]/g, '').trim() + ' ' + unit);
+                new MutationObserver(sync).observe(out, { childList: true, characterData: true, subtree: true }); sync();
+            });
+        }
+        window.LabUI = { toggle: labToggle, fit: labFit, pause: labSetPaused };
 
         // Utility function to take the shortest path around a circle
         function getShortestAngle(target, current) {
@@ -2061,7 +2153,7 @@
                      onDone: o.onDone, done: false, label: o.label, error: null, t0: performance.now() };
             setRotorHealth([1, 1]);
             state.mode = 'auto'; ui.toggleMode.checked = true; ui.modeLabel.textContent = 'STUDIO';
-            ui.autoControls.classList.add('opacity-50', 'pointer-events-none');
+            ui.autoControls.classList.add('opacity-50', 'pointer-events-none'); ui.autoControls.inert = true;
             ui.sliderFront.disabled = true; ui.sliderBack.disabled = true;
             clearPlotData();
             showLiveBanner();
@@ -2104,15 +2196,26 @@
             inputs.front = 0; inputs.back = 0;
             const b = document.getElementById('live-banner'); if (b) b.classList.add('hidden');
         }
+        // screen-reader announcements for state changes only (start, health alarm, completion), not every frame
+        let labLastSaid = '';
+        function labAnnounce(msg) {
+            const el = document.getElementById('lab-announce'); if (!el || msg === labLastSaid) return;
+            labLastSaid = msg; el.textContent = ''; setTimeout(() => { el.textContent = msg; }, 50);
+        }
         function showLiveBanner() {
             const b = document.getElementById('live-banner'); if (!b) return;
+            if (live) {
+                const al = live.mon && live.mon.alarm != null ? ` Health monitor alarm at ${live.mon.alarm.toFixed(1)} s.` : '';
+                labAnnounce(live.done ? `Studio test complete: ${live.label}, ${live.sc.name}.${al}` + (live.error ? ' Error: ' + live.error : '')
+                                      : `Studio test running: ${live.label}, ${live.sc.name}.${al}`);
+            }
             b.classList.remove('hidden');
             const txt = document.getElementById('live-banner-text');
             if (!live) return;
             const tt = Math.min(live.k * SIM_H, live.sc.T);
             txt.textContent = live.done
                 ? `Studio test complete: ${live.label} · ${live.sc.name}. Holding the last reference.` + (live.error ? ' Error: ' + live.error : '')
-                : `Studio test running: ${live.label} · ${live.sc.name} · t = ${tt.toFixed(1)} / ${live.sc.T} s` + (live.error ? ' · controller error: ' + live.error : '');
+                : `Studio test running: ${live.label} · ${live.sc.name} · t = ${tt.toFixed(1)} / ${live.sc.T} s` + (live.mon && live.mon.alarm != null ? ` · health alarm at ${live.mon.alarm.toFixed(1)} s` : '') + (live.error ? ' · controller error: ' + live.error : '');
             document.getElementById('live-banner-results').classList.toggle('hidden', !live.done);
         }
 
@@ -2176,8 +2279,7 @@
                 motorObj.userData.blur.visible = (speed > 0.3);
             };
 
-            updateProp(parts.rotors.front, actuators.front);
-            updateProp(parts.rotors.back, actuators.back);
+            if (!simPaused) { updateProp(parts.rotors.front, actuators.front); updateProp(parts.rotors.back, actuators.back); }
 
             controls.update();
             renderer.render(scene, camera);

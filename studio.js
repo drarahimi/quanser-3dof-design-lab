@@ -77,26 +77,34 @@
     }
 
     // ------------------------------------------------------------------ shell
-    let root, body, msgBar;
+    let root, body, msgBar, live, lastFocus = null;
     function build() {
-        root = h('div', { id: 'studio', class: 'fixed inset-0 z-[300] hidden bg-slate-900/40 backdrop-blur-sm pointer-events-auto' });
+        root = h('div', { id: 'studio', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'studio-title', class: 'fixed inset-0 z-[300] hidden bg-slate-900/40 backdrop-blur-sm pointer-events-auto' });
         const panel = h('div', { class: 'studio-panel absolute inset-3 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden text-slate-800 dark:text-slate-100' });
         const tabs = [['controller', '1 · Controller'], ['test', '2 · Test'], ['specs', '3 · Specifications'], ['results', '4 · Results'], ['analysis', '5 · Linear analysis'], ['tutor', '6 · AI tutor']];
-        const tabBar = h('div', { class: 'studio-tabs flex items-center gap-1' }, tabs.map(([k, label]) =>
-            h('button', { 'data-tab': k, class: 'studio-tab px-3 py-1.5 rounded-lg text-sm font-semibold', onclick: () => { st.tab = k; render(); } }, label)));
+        const tabBar = h('div', { class: 'studio-tabs flex items-center gap-1', role: 'tablist', 'aria-label': 'Design Studio steps' }, tabs.map(([k, label]) =>
+            h('button', { 'data-tab': k, id: 'studio-tab-' + k, role: 'tab', 'aria-controls': 'studio-body', class: 'studio-tab px-3 py-1.5 rounded-lg text-sm font-semibold', onclick: () => { st.tab = k; render(); } }, label)));
+        // arrow keys move between tabs (WAI-ARIA tabs pattern, automatic activation)
+        tabBar.addEventListener('keydown', (e) => {
+            const keys = tabs.map(t => t[0]); let i = keys.indexOf(st.tab);
+            if (e.key === 'ArrowRight') i = (i + 1) % keys.length; else if (e.key === 'ArrowLeft') i = (i + keys.length - 1) % keys.length;
+            else if (e.key === 'Home') i = 0; else if (e.key === 'End') i = keys.length - 1; else return;
+            e.preventDefault(); st.tab = keys[i]; render(); $('#studio-tab-' + st.tab).focus();
+        });
         const header = h('div', { class: 'studio-header flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60' },
             h('div', { class: 'studio-left flex items-center gap-4' },
-                h('div', { class: 'studio-title' }, h('div', { class: 'text-sm font-bold whitespace-nowrap' }, 'Design Studio'),
+                h('div', { class: 'studio-title' }, h('h2', { id: 'studio-title', class: 'text-sm font-bold whitespace-nowrap' }, 'Design Studio'),
                     h('div', { class: 'studio-sub text-[11px] text-slate-500 whitespace-nowrap' }, 'design · test · check · revise')),
                 tabBar),
             h('div', { class: 'studio-actions flex items-center gap-2' },
                 h('span', { id: 'studio-design-chip', class: 'text-xs font-semibold px-2 py-1 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200' }),
                 h('button', { class: 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700', onclick: () => runBatch(), title: 'Run the whole test instantly (1 kHz, headless) and check it' }, '▶ Simulate'),
                 h('button', { class: 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700', onclick: () => flyLive(), title: 'Run the same test in real time in the 3-D view' }, '✈ Fly in 3-D'),
-                h('button', { class: 'px-2.5 py-1.5 rounded-lg text-sm font-semibold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300', onclick: close, title: 'Close (Esc)' }, '✕')));
+                h('button', { class: 'px-2.5 py-1.5 rounded-lg text-sm font-semibold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300', onclick: close, title: 'Close (Esc)', 'aria-label': 'Close Design Studio' }, '✕')));
         msgBar = h('div', { id: 'studio-msg', class: 'hidden px-4 py-2 text-sm border-b' });
-        body = h('div', { id: 'studio-body', class: 'flex-1 overflow-auto p-4' });
-        panel.append(header, msgBar, body);
+        live = h('div', { id: 'studio-live', class: 'sr-only', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
+        body = h('div', { id: 'studio-body', class: 'flex-1 overflow-auto p-4', role: 'tabpanel' });
+        panel.append(header, msgBar, live, body);
         root.append(panel);
         document.body.append(root);
         window.addEventListener('keydown', (e) => {
@@ -107,12 +115,25 @@
             }
         });
     }
-    function open(tab) { if (!root) build(); if (tab) st.tab = tab; root.classList.remove('hidden'); render(); }
-    function close() { root && root.classList.add('hidden'); }
+    // modal behaviour: everything behind the studio is inert while it is open; focus moves in and is restored on close
+    const setInert = (on) => [...document.body.children].forEach(c => { if (c !== root && c.id !== 'lab-tip' && c.tagName !== 'SCRIPT') c.inert = on; });
+    function open(tab) {
+        if (!root) build(); if (tab) st.tab = tab;
+        const wasHidden = root.classList.contains('hidden');
+        if (wasHidden) lastFocus = document.activeElement;
+        root.classList.remove('hidden'); setInert(true); render();
+        if (wasHidden) { const t = $('#studio-tab-' + st.tab); t && t.focus(); }
+    }
+    function close() {
+        if (!root || root.classList.contains('hidden')) return;
+        root.classList.add('hidden'); setInert(false);
+        if (lastFocus && document.contains(lastFocus)) lastFocus.focus(); lastFocus = null;
+    }
     function message(text, kind = 'info') {
         const cls = { info: 'bg-sky-50 text-sky-800 border-sky-200', ok: 'bg-emerald-50 text-emerald-800 border-emerald-200', err: 'bg-rose-50 text-rose-800 border-rose-200' }[kind];
         msgBar.className = 'px-4 py-2 text-sm border-b whitespace-pre-wrap ' + cls;
         msgBar.textContent = text;
+        live.textContent = ''; setTimeout(() => { live.textContent = text; }, 50);   // announce to screen readers
     }
     function clearMessage() { msgBar.className = 'hidden'; }
 
@@ -120,10 +141,25 @@
         root.querySelectorAll('.studio-tab').forEach(b => {
             b.className = 'studio-tab px-3 py-1.5 rounded-lg text-sm font-semibold ' +
                 (b.dataset.tab === st.tab ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700');
+            const on = b.dataset.tab === st.tab;
+            b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
         });
+        body.setAttribute('aria-labelledby', 'studio-tab-' + st.tab);
         $('#studio-design-chip').textContent = 'Design: ' + designLabel();
+        // the body is rebuilt on every change: remember which control had focus and put focus back afterwards
+        const FOC = 'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
+        const a = document.activeElement, had = a && body.contains(a);
+        const key = had ? { block: a.getAttribute('data-block'), label: a.getAttribute('aria-label'), text: (a.textContent || '').trim(), tag: a.tagName,
+                            idx: [...body.querySelectorAll(FOC)].indexOf(a) } : null;
         body.innerHTML = '';
         ({ controller: renderController, test: renderTest, specs: renderSpecs, results: renderResults, analysis: renderAnalysis, tutor: renderTutor })[st.tab]();
+        if (key) {
+            const all = [...body.querySelectorAll(FOC)];
+            const t = (key.block && body.querySelector(`[data-block="${key.block}"]`)) ||
+                      (key.label && all.find(e => e.getAttribute('aria-label') === key.label)) ||
+                      (key.text && all.find(e => e.tagName === key.tag && (e.textContent || '').trim() === key.text)) || all[Math.min(key.idx, all.length - 1)];
+            if (t) t.focus({ preventScroll: true });
+        }
     }
 
     // ------------------------------------------------------------------ small UI kit
@@ -133,7 +169,8 @@
         class: 'px-2.5 py-1 rounded-md text-sm font-semibold border ' + ({
             plain: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:bg-slate-50',
             primary: 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700',
-            danger: 'bg-white text-rose-700 border-rose-300 hover:bg-rose-50' })[kind], onclick, title }, label);
+            danger: 'bg-white text-rose-700 border-rose-300 hover:bg-rose-50' })[kind], onclick, title,
+        type: 'button', 'aria-label': (title && typeof label === 'string' && !/[A-Za-z]{2}/.test(label)) ? title : undefined }, label);
     const numField = (label, value, onchange, unit = '', hint = '') => h('label', { class: 'flex items-center justify-between gap-2 text-sm py-0.5' },
         h('span', { class: 'text-slate-600 dark:text-slate-300', title: hint }, label),
         h('span', { class: 'flex items-center gap-1' },
@@ -267,7 +304,7 @@
         svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
         svg.setAttribute('width', W * zoom); svg.setAttribute('height', Hh * zoom);
         svg.setAttribute('class', 'bg-[radial-gradient(circle,#e2e8f0_1px,transparent_1px)] [background-size:20px_20px] select-none');
-        svg.id = 'studio-diagram';
+        svg.id = 'studio-diagram'; svg.setAttribute('role', 'group'); svg.setAttribute('aria-label', 'Block diagram editor. Tab to a block to select or move it.');
         const NS = 'http://www.w3.org/2000/svg';
         const el = (t, a) => { const e = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
         const byId = Object.fromEntries(dg.blocks.map(b => [b.id, b]));
@@ -285,7 +322,14 @@
         // blocks
         const colorOf = { source: '#2a78d6', const: '#2a78d6', output: '#1baf7a', mixer: '#1baf7a', integrator: '#4a3aa7', derivative: '#4a3aa7', saturation: '#eb6834', wrap: '#eb6834' };
         for (const b of dg.blocks) {
-            const g = el('g', { transform: `translate(${b.x},${b.y})`, style: 'cursor:move' });
+            const g = el('g', { transform: `translate(${b.x},${b.y})`, style: 'cursor:move', tabindex: 0, role: 'button', 'data-block': b.id,
+                                'aria-pressed': st.diagSel && st.diagSel.block === b.id ? 'true' : 'false',
+                                'aria-label': `Block ${b.id}, ${b.type}: ${D.BLOCK_TYPES[b.type].label(b)}. Enter selects it; arrow keys move it; connect inputs in the inspector.` });
+            g.addEventListener('keydown', (e) => {
+                const mv = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[e.key];
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); st.diagSel = { block: b.id }; render(); }
+                else if (mv) { e.preventDefault(); b.x = Math.max(0, b.x + mv[0] * (e.shiftKey ? 5 : 1)); b.y = Math.max(0, b.y + mv[1] * (e.shiftKey ? 5 : 1)); st.diagSel = { block: b.id }; save(); render(); }
+            });
             const sel = st.diagSel && st.diagSel.block === b.id;
             const bh = blockH(b), col = colorOf[b.type] || '#52514e';
             g.append(el('rect', { width: BW, height: bh, rx: 6, fill: sel ? '#eef2ff' : '#ffffff', stroke: sel ? '#4f46e5' : col, 'stroke-width': sel ? 2.5 : 1.5 }));
@@ -311,7 +355,7 @@
         svg.addEventListener('mousedown', (e) => { if (e.target === svg) { st.diagSel = null; render(); } });
         const canvasWrap = h('div', { class: 'overflow-auto border rounded-lg border-slate-200 dark:border-slate-700 h-[56vh] bg-slate-50' }, svg);
         body.append(palette, h('div', { class: 'grid grid-cols-4 gap-3' }, h('div', { class: 'col-span-3' }, canvasWrap,
-            h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Drag blocks to move them. Drag from an output port (filled) to an input port (open) to connect. Click a block or wire to select it; Delete removes it. Integrators break feedback loops. Units: rad, rad/s, volts.')),
+            h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Drag blocks to move them. Drag from an output port (filled) to an input port (open) to connect. Click a block or wire to select it; Delete removes it. Keyboard: Tab to a block, Enter selects it, arrow keys move it (Shift for larger steps), and the inspector connects its inputs. Integrators break feedback loops. Units: rad, rad/s, volts.')),
             renderBlockInspector()));
     }
     function blankDiagram() {
@@ -382,7 +426,21 @@
                 save(); render();
             });
         });
-        return card('Block ' + b.id + ' · ' + b.type, ...fields,
+        // keyboard alternative to dragging wires: choose the source of each input port
+        const outs = []; dg.blocks.forEach(x => { for (let i = 0; i < D.nOut(x); i++) outs.push(x.id + ':' + i); });
+        const inputs = D.nIn(b) ? h('div', { class: 'mt-2 pt-2 border-t border-slate-200' }, h('div', { class: 'text-xs font-bold uppercase tracking-wide text-slate-500 mb-1' }, 'Inputs'),
+            Array.from({ length: D.nIn(b) }, (_, i) => {
+                const w = dg.wires.find(w => w.to.id === b.id && w.to.port === i), cur = w ? w.from.id + ':' + w.from.port : '';
+                const nm = b.type === 'mixer' ? ['V_s', 'V_d'][i] : b.type === 'sum' ? (b.params.signs[i] || '+') + ' input ' + (i + 1) : 'input ' + (i + 1);
+                return h('label', { class: 'flex justify-between items-center gap-2 text-sm py-0.5' }, nm,
+                    h('select', { class: 'border rounded px-1 font-mono text-xs', 'aria-label': `Block ${b.id} ${nm}: connected from`,
+                        onchange: (e) => { dg.wires = dg.wires.filter(x => !(x.to.id === b.id && x.to.port === i));
+                            if (e.target.value) { const [id, p] = e.target.value.split(':'); dg.wires.push({ from: { id, port: +p }, to: { id: b.id, port: i } }); }
+                            save(); render(); } },
+                        h('option', { value: '', selected: !cur }, '(not connected)'),
+                        outs.map(o => h('option', { value: o, selected: o === cur }, o.endsWith(':0') && D.nOut(dg.blocks.find(x => x.id === o.split(':')[0])) === 1 ? o.split(':')[0] : o))));
+            })) : null;
+        return card('Block ' + b.id + ' · ' + b.type, ...fields, inputs,
             h('div', { class: 'mt-2 flex gap-2' }, btn('Delete block', () => deleteDiagSelection(), 'danger')),
             h('div', { class: 'text-xs text-slate-500 mt-2' }, ({
                 integrator: 'Output is the state; the input is integrated after the step (forward Euler) and clamped to ±lim.',
@@ -399,34 +457,36 @@
     function renderTest() {
         const sc = st.scenario;
         const set = (k, f = parseFloat) => (v) => { sc[k] = f(v); save(); render(); };
-        const presetSel = h('select', { class: 'border rounded px-1 py-0.5 text-sm', onchange: (e) => { if (!e.target.value) return; st.scenario = JSON.parse(JSON.stringify(D.SCENARIOS[e.target.value])); save(); render(); } },
+        const presetSel = h('select', { class: 'border rounded px-1 py-0.5 text-sm', 'aria-label': 'Load a standard test', onchange: (e) => { if (!e.target.value) return; st.scenario = JSON.parse(JSON.stringify(D.SCENARIOS[e.target.value])); save(); render(); } },
             h('option', { value: '' }, 'Load a standard test…'), Object.entries(D.SCENARIOS).map(([k, v]) => h('option', { value: k }, v.name)));
+        const refLbl = { t: 'time (s)', theta: 'elevation reference (deg)', psi: 'travel reference (deg)', ramp: 'ramp duration (s)' };
         const refRows = sc.refs.map((r, i) => h('tr', {},
             ['t', 'theta', 'psi', 'ramp'].map(k => h('td', {}, h('input', { class: 'w-20 px-1 py-0.5 border rounded text-right font-mono text-sm', value: r[k] ?? 0,
+                'aria-label': `Reference change ${i + 1}: ${refLbl[k]}`,
                 onchange: (e) => { r[k] = parseFloat(e.target.value) || 0; save(); renderTestPreview(); } }))),
-            h('td', {}, i > 0 ? btn('✕', () => { sc.refs.splice(i, 1); save(); render(); }, 'danger') : '')));
+            h('td', {}, i > 0 ? btn('✕', () => { sc.refs.splice(i, 1); save(); render(); }, 'danger', `Remove reference change ${i + 1}`) : '')));
         const distRows = (sc.dists || []).map((q, i) => h('tr', {},
-            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.t, onchange: (e) => { q.t = parseFloat(e.target.value) || 0; save(); } })),
-            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.dur, onchange: (e) => { q.dur = parseFloat(e.target.value) || 0; save(); } })),
-            h('td', {}, h('select', { class: 'border rounded px-1', onchange: (e) => { q.axis = e.target.value; save(); } }, ['theta', 'phi', 'psi'].map(a => h('option', { value: a, selected: a === q.axis }, a)))),
-            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.tau, onchange: (e) => { q.tau = parseFloat(e.target.value) || 0; save(); } })),
-            h('td', {}, btn('✕', () => { sc.dists.splice(i, 1); save(); render(); }, 'danger'))));
+            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.t, 'aria-label': `Disturbance ${i + 1}: start time (s)`, onchange: (e) => { q.t = parseFloat(e.target.value) || 0; save(); } })),
+            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.dur, 'aria-label': `Disturbance ${i + 1}: duration (s)`, onchange: (e) => { q.dur = parseFloat(e.target.value) || 0; save(); } })),
+            h('td', {}, h('select', { class: 'border rounded px-1', 'aria-label': `Disturbance ${i + 1}: axis`, onchange: (e) => { q.axis = e.target.value; save(); } }, ['theta', 'phi', 'psi'].map(a => h('option', { value: a, selected: a === q.axis }, a)))),
+            h('td', {}, h('input', { class: 'w-16 px-1 py-0.5 border rounded text-right font-mono text-sm', value: q.tau, 'aria-label': `Disturbance ${i + 1}: torque (N m)`, onchange: (e) => { q.tau = parseFloat(e.target.value) || 0; save(); } })),
+            h('td', {}, btn('✕', () => { sc.dists.splice(i, 1); save(); render(); }, 'danger', `Remove disturbance ${i + 1}`))));
         const FT = { rotor: { label: 'Rotor thrust loss', targets: ['front', 'back', 'both'], unit: '% of thrust', scale: 100 },
                      friction: { label: 'Travel friction increase', targets: null, unit: 'N m s/rad', scale: 1 },
                      bias: { label: 'Encoder bias', targets: ['theta', 'phi', 'psi'], unit: 'deg', scale: 1 },
                      stuck: { label: 'Encoder stuck', targets: ['theta', 'phi', 'psi'], unit: '', scale: 1 } };
-        const inp = (w, v, on) => h('input', { class: 'px-1 py-0.5 border rounded text-right font-mono text-sm', style: 'width:' + w, value: v, onchange: (e) => { on(parseFloat(e.target.value) || 0); save(); renderTestPreview(); } });
+        const inp = (w, v, on, label) => h('input', { class: 'px-1 py-0.5 border rounded text-right font-mono text-sm', style: 'width:' + w, value: v, 'aria-label': label, onchange: (e) => { on(parseFloat(e.target.value) || 0); save(); renderTestPreview(); } });
         const faultRows = (sc.faults || []).map((f, i) => {
             const ft = FT[f.type] || FT.rotor;
             return h('tr', {},
-                h('td', {}, h('select', { class: 'border rounded px-1 text-sm', onchange: (e) => { const ty = e.target.value; Object.assign(f, { type: ty, target: FT[ty].targets ? FT[ty].targets[0] : undefined,
+                h('td', {}, h('select', { class: 'border rounded px-1 text-sm', 'aria-label': `Fault ${i + 1}: type`, onchange: (e) => { const ty = e.target.value; Object.assign(f, { type: ty, target: FT[ty].targets ? FT[ty].targets[0] : undefined,
                     size: { rotor: 0.3, friction: 0.05, bias: 2, stuck: 0 }[ty], ramp: 0 }); save(); render(); } },
                     Object.entries(FT).map(([k, v]) => h('option', { value: k, selected: k === f.type }, v.label)))),
-                h('td', {}, ft.targets ? h('select', { class: 'border rounded px-1 text-sm', onchange: (e) => { f.target = e.target.value; save(); } }, ft.targets.map(a => h('option', { value: a, selected: a === f.target }, a))) : ''),
-                h('td', {}, inp('3.2rem', f.t, v => { f.t = v; })),
-                h('td', {}, f.type === 'stuck' ? '' : h('span', { class: 'whitespace-nowrap' }, inp('3.6rem', +(f.size * ft.scale).toFixed(4), v => { f.size = v / ft.scale; }), h('span', { class: 'text-[11px] text-slate-500 ml-1' }, ft.unit === '% of thrust' ? '%' : ft.unit))),
-                h('td', {}, f.type === 'stuck' ? '' : inp('3.2rem', f.ramp || 0, v => { f.ramp = v; })),
-                h('td', {}, btn('✕', () => { sc.faults.splice(i, 1); save(); render(); }, 'danger')));
+                h('td', {}, ft.targets ? h('select', { class: 'border rounded px-1 text-sm', 'aria-label': `Fault ${i + 1}: where`, onchange: (e) => { f.target = e.target.value; save(); } }, ft.targets.map(a => h('option', { value: a, selected: a === f.target }, a))) : ''),
+                h('td', {}, inp('3.2rem', f.t, v => { f.t = v; }, `Fault ${i + 1}: start time (s)`)),
+                h('td', {}, f.type === 'stuck' ? '' : h('span', { class: 'whitespace-nowrap' }, inp('3.6rem', +(f.size * ft.scale).toFixed(4), v => { f.size = v / ft.scale; }, `Fault ${i + 1}: size (${ft.unit})`), h('span', { class: 'text-[11px] text-slate-500 ml-1' }, ft.unit === '% of thrust' ? '%' : ft.unit))),
+                h('td', {}, f.type === 'stuck' ? '' : inp('3.2rem', f.ramp || 0, v => { f.ramp = v; }, `Fault ${i + 1}: ramp duration (s)`)),
+                h('td', {}, btn('✕', () => { sc.faults.splice(i, 1); save(); render(); }, 'danger', `Remove fault ${i + 1}`)));
         });
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             h('div', { class: 'space-y-3' },
@@ -464,10 +524,10 @@
     // ------------------------------------------------------------------ 3. specs
     function renderSpecs() {
         const rows = st.specs.map(s0 => h('tr', { class: 'border-b border-slate-100 dark:border-slate-800' },
-            h('td', { class: 'py-1' }, h('input', { type: 'checkbox', checked: s0.on, onchange: (e) => { s0.on = e.target.checked; save(); } })),
+            h('td', { class: 'py-1' }, h('input', { type: 'checkbox', checked: s0.on, 'aria-label': `Check ${s0.label}`, onchange: (e) => { s0.on = e.target.checked; save(); } })),
             h('td', { class: 'pr-4 text-sm' }, s0.label),
             h('td', { class: 'text-sm text-slate-500 pr-2' }, '≤'),
-            h('td', {}, h('input', { class: 'w-24 px-1 py-0.5 border rounded text-right font-mono text-sm', value: s0.limit, onchange: (e) => { s0.limit = parseFloat(e.target.value); save(); } })),
+            h('td', {}, h('input', { class: 'w-24 px-1 py-0.5 border rounded text-right font-mono text-sm', value: s0.limit, 'aria-label': `${s0.label} limit${s0.unit ? ' (' + s0.unit + ')' : ''}`, onchange: (e) => { s0.limit = parseFloat(e.target.value); save(); } })),
             h('td', { class: 'text-xs text-slate-500 pl-1' }, s0.unit)));
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             h('div', { class: 'col-span-2' }, card('Specifications (checked after every run)', h('table', {}, rows),
@@ -509,7 +569,7 @@
         st.runs.push(rec); st.selectedRun = rec.id;
         const np = rec.checks.filter(c => c.pass === true).length, nt = rec.checks.filter(c => c.pass !== null).length;
         if (run.error) message(`The controller stopped with an error at t = ${fmt(run.tFail, 3)} s:\n${run.error}`, 'err');
-        else message(`${rec.label}: ${np}/${nt} specifications met. ${st.scenario.T} s simulated in ${run.wallMs.toFixed(0)} ms.`, np === nt ? 'ok' : 'info');
+        else message(`${rec.label}: ${np}/${nt} specifications met.${run.alarm != null ? ` Health monitor alarm at ${fmt(run.alarm, 2)} s.` : ''} ${st.scenario.T} s simulated in ${run.wallMs.toFixed(0)} ms.`, np === nt ? 'ok' : 'info');
         st.tab = 'results'; render();
     }
     function flyLive() {
@@ -533,12 +593,13 @@
             const np = r.checks.filter(c => c.pass === true).length, nt = r.checks.filter(c => c.pass !== null).length;
             return h('div', { class: 'flex items-center gap-2 p-1.5 rounded-lg cursor-pointer ' + (r.id === sel.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-slate-50'),
                 onclick: () => { st.selectedRun = r.id; render(); } },
-                h('input', { type: 'checkbox', checked: r.overlay, title: 'Overlay in the plots', onclick: (e) => e.stopPropagation(), onchange: (e) => { r.overlay = e.target.checked; render(); } }),
-                h('span', { class: 'inline-block w-3 h-3 rounded-full', style: 'background:' + r.color }),
-                h('div', { class: 'flex-1 min-w-0' }, h('div', { class: 'text-xs font-semibold truncate' }, r.label),
-                    h('div', { class: 'text-[11px] text-slate-500' }, r.error ? 'error: ' + r.error.slice(0, 40) : `${np}/${nt} specs met`)),
+                h('input', { type: 'checkbox', checked: r.overlay, title: 'Overlay in the plots', 'aria-label': 'Overlay ' + r.label + ' in the plots', onclick: (e) => e.stopPropagation(), onchange: (e) => { r.overlay = e.target.checked; render(); } }),
+                h('span', { class: 'inline-block w-3 h-3 rounded-full', style: 'background:' + r.color, 'aria-hidden': 'true' }),
+                h('button', { type: 'button', class: 'flex-1 min-w-0 text-left', 'aria-pressed': r.id === sel.id ? 'true' : 'false', onclick: (e) => { e.stopPropagation(); st.selectedRun = r.id; render(); } },
+                    h('span', { class: 'block text-xs font-semibold truncate' }, r.label),
+                    h('span', { class: 'block text-[11px] text-slate-500' }, r.error ? 'error: ' + r.error.slice(0, 40) : `${np}/${nt} specs met`)),
                 h('span', { class: 'text-[11px] font-bold px-1.5 rounded ' + (np === nt && !r.error ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700') }, np === nt && !r.error ? 'PASS' : 'FAIL'),
-                h('button', { class: 'text-slate-400 hover:text-rose-600 text-xs', title: 'Delete run', onclick: (e) => { e.stopPropagation(); st.runs = st.runs.filter(x => x !== r); render(); } }, '✕'));
+                h('button', { type: 'button', class: 'text-slate-400 hover:text-rose-600 text-xs', title: 'Delete run', 'aria-label': 'Delete ' + r.label, onclick: (e) => { e.stopPropagation(); st.runs = st.runs.filter(x => x !== r); render(); } }, '✕'));
         })), h('div', { class: 'mt-2 flex flex-wrap gap-1.5' },
             btn('Export CSV', () => download(`run${sel.id}.csv`, runCSV(sel), 'text/csv')),
             btn('Export JSON', () => download(`run${sel.id}.json`, JSON.stringify(runJSON(sel), null, 1))),
@@ -685,6 +746,7 @@
         const ymax = Math.max(1, ...im.map(Math.abs).filter(v => v < 50)) * 1.2;
         const sx = (v) => 30 + (v - xmin) / (xmax - xmin) * (W - 40), sy = (v) => Hh / 2 - v / ymax * (Hh / 2 - 15);
         const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`); svg.setAttribute('class', 'w-full');
+        svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', `s-plane map of ${poles.length} closed-loop poles, ${poles.filter(p => p.re >= 0).length} in the right half-plane. The poles are listed in the table below.`);
         const el = (t, a) => { const e = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
         svg.append(el('rect', { x: sx(0), y: 0, width: W - sx(0), height: Hh, fill: '#fde8e8' }));
         svg.append(el('line', { x1: 30, y1: sy(0), x2: W, y2: sy(0), stroke: '#94a3b8' }), el('line', { x1: sx(0), y1: 0, x2: sx(0), y2: Hh, stroke: '#94a3b8' }));
@@ -705,6 +767,11 @@
         const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 800, Hh = cv.clientHeight || 300;
         cv.width = W * dpr; cv.height = Hh * dpr;
         const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, Hh);
+        // text alternative: what is plotted; the numbers are in the adjacent tables and in the CSV/JSON export
+        const names = [...new Set(series.filter(s0 => s0.label).map(s0 => s0.label))];
+        cv.setAttribute('role', 'img');
+        cv.setAttribute('aria-label', 'Plot of ' + labels.join(', ') + ' versus ' + (opt.xlabel || 't (s)') + (names.length ? '; series: ' + names.join(', ') : '') +
+            '. The values are listed in the tables on this tab and can be exported as CSV.');
         const np = labels.length, L = 62, R = 12, TOP = 8, BOT = 26, gap = 10, ph = (Hh - TOP - BOT - gap * (np - 1)) / np;
         let x0 = Infinity, x1 = -Infinity;
         for (const s0 of series) for (const v of s0.x) { if (v < x0) x0 = v; if (v > x1) x1 = v; }

@@ -13,7 +13,7 @@ Nothing to install: it runs in any modern browser with WebGL (tested in Chromium
 
 The main view shows the 3-D unit with live plots of travel, elevation, pitch and the two motor voltages (left) and the controls (right).
 
-* **Fly it by hand** (MANUAL): set the front and back motor voltages with the sliders, or with `W`/`S` (front) and `↑`/`↓` (back).
+* **Fly it by hand** (MANUAL): set the front and back motor voltages with the sliders, or with `W`/`S` (front) and `↑`/`↓` (back) (these keys can be switched off in the toolbar).
 * **Let a controller fly it** (AUTO): choose cascaded PID or LQR with integral action, then set the travel and elevation targets.
 * **Change the plant:** Quanser nominal parameters or an identified rig, with optional hardware effects (motor lag and encoder quantisation).
 * **Export** the run as CSV, and show the model parameters or the unit's dimensions in the 3-D view.
@@ -43,6 +43,15 @@ Click **Design Studio** to open the design workflow:
 ### View controls
 * Drag to orbit, scroll or pinch to zoom, right-drag to pan the 3-D view.
 * The toolbar at the bottom shows or hides the **Plots** and **Controls** panels and **Fit view** re-centres the unit. On small screens the panels open as drawers, one at a time.
+* **Pause** freezes the simulation and all animation; **Motor keys** turns the `W`/`S`/`↑`/`↓` shortcuts on or off.
+
+## Accessibility
+The lab targets **WCAG 2.1 Level AA**, which covers the WCAG 2.0 AA requirement of Ontario's Integrated Accessibility Standards (AODA, O. Reg. 191/11).
+* **Keyboard:** everything works without a mouse. `Tab` moves through the controls with a visible focus ring. In the 3-D view (focus it with `Tab`), the arrow keys orbit, `+`/`-` zoom and `Home` fits the view. The control diagram opens with `Enter` and closes with `Esc`.
+* **Design Studio:** a modal dialog; `←`/`→` switch tabs, `Esc` closes it and returns focus. In the block-diagram editor, `Tab` to a block, `Enter` selects it, the arrow keys move it (`Shift` for larger steps), and the inspector's **Inputs** lists connect each input port, so diagrams can be built without dragging.
+* **Screen readers:** all controls have names, sliders report their value with units, plots and diagrams have text alternatives (the numbers are in the tables and the CSV export), and run results, errors and health alarms are announced.
+* **Motion:** animation can be paused, and the lab follows the operating system's "reduce motion" setting.
+* **Checked with** axe-core 4.13 (no violations on the main view or any studio tab) and a scripted keyboard walkthrough. Automated tools cover only part of WCAG; please report any barrier you meet (open an issue), and an accessible alternative format of any material is available on request.
 
 ## Model and numerics
 * Nonlinear model of the elevation, pitch and travel axes in SI units, driven by the front and back motor voltages, with the joint stops (pitch ±32°, elevation −27.5° to 36°).
