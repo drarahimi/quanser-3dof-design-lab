@@ -83,7 +83,7 @@
         const panel = h('div', { class: 'studio-panel absolute inset-3 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden text-slate-800 dark:text-slate-100' });
         const tabs = [['controller', '1 · Controller'], ['test', '2 · Test'], ['specs', '3 · Specifications'], ['results', '4 · Results'], ['analysis', '5 · Linear analysis'], ['tutor', '6 · AI tutor']];
         const tabBar = h('div', { class: 'studio-tabs flex items-center gap-1', role: 'tablist', 'aria-label': 'Design Studio steps' }, tabs.map(([k, label]) =>
-            h('button', { 'data-tab': k, id: 'studio-tab-' + k, role: 'tab', 'aria-controls': 'studio-body', class: 'studio-tab px-3 py-1.5 rounded-lg text-sm font-semibold', onclick: () => { st.tab = k; render(); } }, label)));
+            h('button', { 'data-tab': k, id: 'studio-tab-' + k, role: 'tab', 'aria-controls': 'studio-body', class: 'studio-tab px-3 py-1.5 rounded-lg text-sm font-semibold', title: TAB_TIPS[k], onclick: () => { st.tab = k; render(); } }, label)));
         // arrow keys move between tabs (WAI-ARIA tabs pattern, automatic activation)
         tabBar.addEventListener('keydown', (e) => {
             const keys = tabs.map(t => t[0]); let i = keys.indexOf(st.tab);
@@ -97,7 +97,7 @@
                     h('div', { class: 'studio-sub text-[11px] text-slate-500 whitespace-nowrap' }, 'design · test · check · revise')),
                 tabBar),
             h('div', { class: 'studio-actions flex items-center gap-2' },
-                h('span', { id: 'studio-design-chip', class: 'text-xs font-semibold px-2 py-1 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200' }),
+                h('span', { id: 'studio-design-chip', title: 'The controller that ▶ Simulate and ✈ Fly in 3-D will run. Change it on the Controller tab.', class: 'text-xs font-semibold px-2 py-1 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200' }),
                 h('button', { class: 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700', onclick: () => runBatch(), title: 'Run the whole test instantly (1 kHz, headless) and check it' }, '▶ Simulate'),
                 h('button', { class: 'px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700', onclick: () => flyLive(), title: 'Run the same test in real time in the 3-D view' }, '✈ Fly in 3-D'),
                 h('button', { class: 'px-2.5 py-1.5 rounded-lg text-sm font-semibold bg-slate-200 dark:bg-slate-700 hover:bg-slate-300', onclick: close, title: 'Close (Esc)', 'aria-label': 'Close Design Studio' }, '✕')));
@@ -107,6 +107,7 @@
         panel.append(header, msgBar, live, body);
         root.append(panel);
         document.body.append(root);
+        initTips();
         window.addEventListener('keydown', (e) => {
             if (root.classList.contains('hidden')) return;
             if (e.key === 'Escape') close();
@@ -151,6 +152,7 @@
         const a = document.activeElement, had = a && body.contains(a);
         const key = had ? { block: a.getAttribute('data-block'), label: a.getAttribute('aria-label'), text: (a.textContent || '').trim(), tag: a.tagName,
                             idx: [...body.querySelectorAll(FOC)].indexOf(a) } : null;
+        hideTip();
         body.innerHTML = '';
         ({ controller: renderController, test: renderTest, specs: renderSpecs, results: renderResults, analysis: renderAnalysis, tutor: renderTutor })[st.tab]();
         if (key) {
@@ -160,6 +162,7 @@
                       (key.text && all.find(e => e.tagName === key.tag && (e.textContent || '').trim() === key.text)) || all[Math.min(key.idx, all.length - 1)];
             if (t) t.focus({ preventScroll: true });
         }
+        adoptTips(root);
     }
 
     // ------------------------------------------------------------------ small UI kit
@@ -169,15 +172,176 @@
         class: 'px-2.5 py-1 rounded-md text-sm font-semibold border ' + ({
             plain: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:bg-slate-50',
             primary: 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700',
-            danger: 'bg-white text-rose-700 border-rose-300 hover:bg-rose-50' })[kind], onclick, title,
+            danger: 'bg-white text-rose-700 border-rose-300 hover:bg-rose-50' })[kind], onclick, title: title || (typeof label === 'string' ? BTN_TIPS[label] : undefined),
         type: 'button', 'aria-label': (title && typeof label === 'string' && !/[A-Za-z]{2}/.test(label)) ? title : undefined }, label);
-    const numField = (label, value, onchange, unit = '', hint = '') => h('label', { class: 'flex items-center justify-between gap-2 text-sm py-0.5' },
-        h('span', { class: 'text-slate-600 dark:text-slate-300', title: hint }, label),
+    const numField = (label, value, onchange, unit = '', hint = '') => h('label', { class: 'flex items-center justify-between gap-2 text-sm py-0.5', 'data-tip': hint || undefined, 'data-tip-title': hint ? label : undefined },
+        h('span', { class: 'text-slate-600 dark:text-slate-300' + (hint ? ' underline decoration-dotted decoration-slate-400 underline-offset-4 cursor-help' : '') }, label),
         h('span', { class: 'flex items-center gap-1' },
-            h('input', { class: 'w-28 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 font-mono text-right text-sm', value: String(value),
+            h('input', { class: 'w-28 px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 font-mono text-right text-sm', value: String(value), 'aria-description': hint || undefined,
                 onchange: (e) => onchange(e.target.value) }),
             h('span', { class: 'w-12 text-xs text-slate-500' }, unit)));
     const parseVal = (v) => { const n = Number(v); return Number.isFinite(n) && String(v).trim() !== '' ? n : String(v).trim(); };
+
+
+    // ------------------------------------------------------------------ tooltips
+    // One styled tooltip for the whole studio. Any element with a title (or data-tip) gets it: the native title is
+    // moved to data-tip so the browser's own tooltip does not appear as well. Optional data-tip-title (bold heading)
+    // and data-tip-kbd (footer hint). Shows after a short hover delay, at once on keyboard focus; Esc dismisses it.
+    const TAB_TIPS = {
+        controller: 'Choose how the controller is defined: the built-in PID, LQR with integral action, your own code or a block diagram.',
+        test: 'Set the reference changes, disturbance torques, faults and plant used for the run.',
+        specs: 'Set the limits every run is checked against, and how the metrics are measured.',
+        results: 'Time histories, specification checks and health-monitor output of every run. Tick runs to overlay them.',
+        analysis: 'Closed-loop poles, loop Bode plots and stability margins of the design, linearised at hover.',
+        tutor: 'Ask an AI tutor about your latest run. Needs your own Groq API key.'
+    };
+    const BTN_TIPS = {
+        'Reset to design values': 'Restore the gains the lab was designed with (closed-loop poles at 1.5, 4 and 0.6 rad/s).',
+        'Solve for K': 'Solve the Riccati equation for K from your Q and R on the nominal linear model.',
+        'Check code': 'Compile your code and run one step at hover to check that step() returns [Vf, Vb].',
+        'Delete block': 'Remove this block and every wire attached to it (Delete key).',
+        '+ Add change': 'Add a reference change 10 s after the last one.',
+        '+ Add disturbance': 'Add a torque pulse on one axis.',
+        '+ Add fault': 'Inject a rotor, friction or encoder fault for the health monitor to detect.',
+        'Reset defaults': 'Restore the default specification limits.',
+        'Export spec sheet': 'Save the specifications and metric settings as a JSON file to share with students.',
+        'Import spec sheet': 'Load specifications and metric settings from a JSON file.',
+        'Export CSV': 'Download the signals of the selected run as a CSV file.',
+        'Export JSON': 'Download the selected run as a JSON file.',
+        'Load design': 'Copy the controller used in this run back into the Controller tab.',
+        'Analyse current design': 'Linearise the closed loop at hover and compute its poles, loop Bode plots and margins.',
+        'New conversation': 'Clear the conversation with the tutor.',
+        'Export conversation': 'Download the conversation, together with your design and the tutor settings, as JSON.',
+        'Send': 'Send your question (Enter). Shift+Enter starts a new line.'
+    };
+    let tipEl = null, tipCur = null, tipTimer = null;
+    function adoptTips(scope) {
+        scope.querySelectorAll('[title]').forEach(el => {
+            const t = el.getAttribute('title'); el.removeAttribute('title');
+            if (!t || el.tagName === 'svg') return;
+            el.setAttribute('data-tip', t);
+            const named = el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby') || (el.textContent || '').trim();
+            if (!named) el.setAttribute('aria-label', t);
+            else if (el.getAttribute('aria-label') !== t && !el.hasAttribute('aria-description')) el.setAttribute('aria-description', t);
+        });
+    }
+    function hideTip() {
+        clearTimeout(tipTimer); tipCur = null;
+        if (tipEl) { tipEl.classList.remove('show'); tipEl.setAttribute('aria-hidden', 'true'); }
+    }
+    function initTips() {
+        const css = document.createElement('style');
+        css.textContent = `
+#studio-tip{position:fixed;left:0;top:0;z-index:500;max-width:min(300px,calc(100vw - 12px));pointer-events:none;
+  background:#0f172a;color:#cbd5e1;border-radius:8px;padding:7px 10px;font:12.5px/1.45 Inter,system-ui,sans-serif;
+  white-space:pre-line;box-shadow:0 10px 28px rgba(15,23,42,.30),0 0 0 1px rgba(148,163,184,.18);
+  opacity:0;transform:translateY(3px);transition:opacity .12s ease,transform .12s ease}
+#studio-tip.below{transform:translateY(-3px)}
+#studio-tip.show{opacity:1;transform:none}
+#studio-tip::after{content:'';position:absolute;top:100%;left:calc(var(--ax,50%) - 5px);border:5px solid transparent;border-top-color:#0f172a}
+#studio-tip.below::after{top:auto;bottom:100%;border-top-color:transparent;border-bottom-color:#0f172a}
+#studio-tip .tip-h{font-weight:700;color:#fff;margin-bottom:2px}
+#studio-tip .tip-k{margin-top:6px;padding-top:5px;border-top:1px solid rgba(148,163,184,.22);font-size:11px;color:#94a3b8}
+@media (prefers-reduced-motion:reduce){#studio-tip{transition:none;transform:none}}`;
+        document.head.append(css);
+        tipEl = h('div', { id: 'studio-tip', role: 'tooltip', 'aria-hidden': 'true' });
+        root.append(tipEl);
+        const anchorOf = (n) => { const el = n && n.closest ? n.closest('[data-tip],[title]') : null; return el && root.contains(el) ? el : null; };
+        const place = (el) => {
+            const a = el.getBoundingClientRect(), t = tipEl.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, G = 9;
+            let below = a.top - t.height - G < 6, y = below ? a.bottom + G : a.top - t.height - G;
+            if (below && y + t.height > H - 6) { below = false; y = Math.max(6, a.top - t.height - G); }
+            const cx = a.left + a.width / 2, x = Math.min(Math.max(6, cx - t.width / 2), W - t.width - 6);
+            tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+            tipEl.style.setProperty('--ax', Math.min(Math.max(10, cx - x), t.width - 10) + 'px');
+            tipEl.classList.toggle('below', below);
+        };
+        const show = (el) => {
+            adoptTips(el.parentNode || el);
+            const text = el.getAttribute('data-tip'); if (!text || !document.contains(el)) return;
+            tipCur = el; tipEl.textContent = '';
+            const head = el.getAttribute('data-tip-title'), kbd = el.getAttribute('data-tip-kbd');
+            if (head) tipEl.append(h('div', { class: 'tip-h' }, head));
+            tipEl.append(h('div', {}, text));
+            if (kbd) tipEl.append(h('div', { class: 'tip-k' }, kbd));
+            tipEl.setAttribute('aria-hidden', 'false'); place(el); tipEl.classList.add('show');
+        };
+        root.addEventListener('mouseover', (e) => {
+            const el = anchorOf(e.target);
+            if (el && el === tipCur) return;
+            if (!el) { hideTip(); return; }
+            if (el.hasAttribute('title')) adoptTips(el.parentNode || el);   // beat the native tooltip
+            const wasOpen = !!tipCur; clearTimeout(tipTimer);
+            tipTimer = setTimeout(() => show(el), wasOpen ? 60 : 380);
+        });
+        root.addEventListener('focusin', (e) => {
+            const el = anchorOf(e.target); if (!el) { hideTip(); return; }
+            let kb = false; try { kb = e.target.matches(':focus-visible'); } catch (_) { /* old browser */ }
+            if (kb) { clearTimeout(tipTimer); show(el); }
+        });
+        root.addEventListener('focusout', hideTip);
+        root.addEventListener('mousedown', hideTip, true);
+        root.addEventListener('scroll', hideTip, true);
+        root.addEventListener('wheel', hideTip, { passive: true });
+        window.addEventListener('resize', hideTip);
+        // Esc closes a showing tooltip first (WCAG 1.4.13) and only then the studio
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tipCur) { hideTip(); e.stopPropagation(); e.preventDefault(); } }, true);
+        adoptTips(root);
+    }
+    // icon button (Font Awesome is loaded by the page); icon-only buttons take their accessible name from the tip
+    const ibtn = (icon, text, onclick, kind, tip) => {
+        const ic = h('i', { class: 'fa-solid ' + icon + (text ? ' mr-1.5 opacity-80' : ''), 'aria-hidden': 'true' });
+        const b = btn(text ? [ic, text] : ic, onclick, kind, tip);
+        if (!text) b.setAttribute('aria-label', tip.split(/[.(]/)[0].trim());
+        return b;
+    };
+
+    // ---------------------------------------------------------------- block toolbox: icons and descriptions
+    const BLOCK_COLOR = { source: '#2a78d6', const: '#2a78d6', output: '#1baf7a', mixer: '#1baf7a', integrator: '#4a3aa7', derivative: '#4a3aa7', saturation: '#eb6834', wrap: '#eb6834', gain: '#52514e', sum: '#52514e', product: '#52514e' };
+    const svgTxt = (x, y, txt, fs = 8) => `<text x="${x}" y="${y}" font-size="${fs}" text-anchor="middle" fill="currentColor" stroke="none" font-family="Inter,system-ui,sans-serif" font-weight="700">${txt}</text>`;
+    const BLOCK_ICON = {
+        source: '<circle cx="6" cy="8" r="3.2"/><path d="M10.5 8H21M18 5l3 3-3 3"/>',
+        const: '<rect x="2.5" y="2.5" width="13" height="11" rx="2"/>' + svgTxt(9, 11, 'c', 9) + '<path d="M15.5 8H22"/>',
+        gain: '<path d="M1.5 8H5M5 2.5v11L18 8zM18 8h4.5"/>',
+        sum: '<circle cx="12" cy="8" r="6.2"/>' + svgTxt(12, 11, 'Σ', 9) + '<path d="M1 8h4.8M18.2 8H23"/>',
+        product: '<circle cx="12" cy="8" r="6.2"/><path d="M9.6 5.6l4.8 4.8M14.4 5.6l-4.8 4.8M1 8h4.8M18.2 8H23"/>',
+        integrator: '<rect x="4.5" y="1.5" width="15" height="13" rx="2"/><path d="M8.5 8h7"/>' + svgTxt(12, 6.6, '1', 6) + svgTxt(12, 13.4, 's', 6.5) + '<path d="M0.8 8h3.7M19.5 8h3.7"/>',
+        derivative: '<rect x="4.5" y="1.5" width="15" height="13" rx="2"/>' + svgTxt(12, 11, 's', 9) + '<path d="M0.8 8h3.7M19.5 8h3.7"/>',
+        saturation: '<path d="M2 8h20M12 1.5v13" stroke-opacity=".35"/><path d="M2 12.5h5.5l9-9H22"/>',
+        wrap: '<path d="M17.5 9.5A6 6 0 1 1 15.6 3.3"/><path d="M16.2 0.8l-0.4 2.9 2.9 0.4"/>',
+        mixer: '<rect x="7" y="1.5" width="10" height="13" rx="2"/><path d="M1 4.5h6M1 11.5h6M17 4.5h6M17 11.5h6M9.5 4.5l5 7M9.5 11.5l5-7"/>',
+        output: '<path d="M1.5 8H13M10 5l3 3-3 3"/><rect x="14.5" y="2.5" width="7.5" height="11" rx="2"/>'
+    };
+    const BLOCK_INFO = {
+        source: ['Signal source', 'Reads a measured state, a reference, the hover voltage Vop or time. Pick the signal in the inspector.'],
+        const: ['Constant', 'Outputs a fixed value. Expressions such as 20*deg are allowed.'],
+        gain: ['Gain', 'Multiplies its input by k.'],
+        sum: ['Sum', 'Adds or subtracts its inputs: one + or − per input, e.g. "+-".'],
+        product: ['Product', 'Multiplies its two inputs.'],
+        integrator: ['Integrator', 'Integrates its input (forward Euler). The state is clamped to ±lim for anti-windup.'],
+        derivative: ['Filtered derivative', 'Differentiates its input through a first-order filter of bandwidth wc (rad/s).'],
+        saturation: ['Saturation', 'Clamps its input between lo and hi.'],
+        wrap: ['Angle wrap', 'Wraps an angle into ±π.'],
+        mixer: ['Rotor mixer', 'Turns collective and differential voltage into rotor voltages: V_f = (V_s + V_d)/2, V_b = (V_s − V_d)/2.'],
+        output: ['Motor output', 'Sends its input to a motor channel, Vf or Vb. A diagram needs exactly one of each.']
+    };
+    const BLOCK_GROUPS = [['Signals', ['source', 'const', 'output']], ['Math', ['gain', 'sum', 'product']], ['Dynamics', ['integrator', 'derivative']],
+                          ['Nonlinear', ['saturation', 'wrap']], ['Rotors', ['mixer']]];
+    const blockIcon = (t) => {
+        const sp = h('span', { class: 'inline-flex shrink-0', style: 'color:' + (BLOCK_COLOR[t] || '#52514e'), 'aria-hidden': 'true' });
+        sp.innerHTML = `<svg viewBox="0 0 24 16" width="24" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${BLOCK_ICON[t] || '<rect x="4" y="2" width="16" height="12" rx="2"/>'}</svg>`;
+        return sp;
+    };
+    function blockButton(t, onAdd) {
+        const [name, desc] = BLOCK_INFO[t] || [t, ''];
+        const bt = D.BLOCK_TYPES[t];
+        const ports = t === 'sum' ? 'one input per sign · 1 output' : `${bt.nin} input${bt.nin === 1 ? '' : 's'} · ${bt.nout} output${bt.nout === 1 ? '' : 's'}`;
+        return h('button', { type: 'button', onclick: () => onAdd(t),
+            class: 'inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm font-semibold hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors',
+            'data-tip-title': name, 'data-tip': desc, 'data-tip-kbd': ports + ' · click to add',
+            'aria-label': 'Add ' + name + ' block', 'aria-description': desc },
+            blockIcon(t), h('span', {}, t));
+    }
 
     // ------------------------------------------------------------------ 1. controller
     function renderController() {
@@ -187,6 +351,7 @@
                        ['diagram', 'Block diagram', 'Wire gains, sums, integrators and limits.']];
         const picker = h('div', { class: 'grid grid-cols-4 gap-2 mb-3' }, types.map(([k, t, d]) =>
             h('button', { class: 'text-left rounded-xl border p-2.5 ' + (st.design.type === k ? 'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50 dark:bg-indigo-900/30' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50'),
+                'aria-pressed': st.design.type === k ? 'true' : 'false',
                 onclick: () => { st.design.type = k; save(); clearMessage(); render(); } },
                 h('div', { class: 'text-sm font-bold' }, t), h('div', { class: 'text-xs text-slate-500' }, d))));
         body.append(picker);
@@ -196,7 +361,20 @@
     function renderPID() {
         const p = st.design.pid;
         const set = (k) => (v) => { p[k] = parseVal(v); save(); };
-        const f = (k, label, unit, hint) => numField(label, p[k], set(k), unit, hint);
+        const PH = {
+            kp_e: 'Elevation proportional gain: collective volts per radian of elevation error.',
+            ki_e: 'Elevation integral gain: removes the steady elevation error left by model mismatch.',
+            kd_e: 'Elevation derivative gain: damping on the elevation rate θ̇.',
+            int_lim_e: 'Anti-windup clamp on the elevation error integral.',
+            kp_t: 'Travel proportional gain: pitch reference per radian of travel error.',
+            ki_t: 'Travel integral gain: removes the steady travel error.',
+            kd_t: 'Travel derivative gain: damping on the travel rate ψ̇.',
+            phi_ref_max: 'Largest pitch angle the travel loop may ask for. Expressions such as 20*deg are allowed.',
+            int_lim_t: 'Anti-windup clamp on the travel error integral.',
+            kp_p: 'Pitch proportional gain: differential volts per radian of pitch error.',
+            kd_p: 'Pitch derivative gain: damping on the pitch rate φ̇.'
+        };
+        const f = (k, label, unit, hint) => numField(label, p[k], set(k), unit, PH[k] || hint);
         const g = S.GAINS.pid;
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' },
             card('Elevation loop → collective voltage',
@@ -283,26 +461,41 @@
     const portY = (b, i, n) => b.y + (blockH(b) / (n + 1)) * (i + 1);
     function renderDiagram() {
         const dg = st.design.diagram;
-        const palette = h('div', { class: 'flex flex-wrap gap-1.5 mb-2' },
-            Object.keys(D.BLOCK_TYPES).map(t => btn('+ ' + t, () => addBlock(t), 'plain', 'Add a ' + t + ' block')),
-            h('span', { class: 'mx-2 border-l' }),
-            btn('Validate', validateDiagram, 'primary'),
-            btn('PID template', () => { if (confirm('Replace the diagram with the cascaded PID template?')) { st.design.diagram = D.diagramPID(); st.diagSel = null; save(); render(); } }),
-            btn('Clear', () => { if (confirm('Remove all blocks?')) { st.design.diagram = blankDiagram(); st.diagSel = null; save(); render(); } }),
-            btn('Export', () => download('diagram.json', JSON.stringify(st.design.diagram, null, 1))),
-            btn('Import', () => pickFile(txt => { try { st.design.diagram = JSON.parse(txt); save(); render(); } catch (e) { message('Not a diagram file: ' + e.message, 'err'); } })),
-            btn('−', () => { st.diagZoom = Math.max(0.3, diagZoomNow() - 0.1); render(); }, 'plain', 'Zoom out'), btn('+', () => { st.diagZoom = Math.min(1.5, diagZoomNow() + 0.1); render(); }, 'plain', 'Zoom in'),
-            btn('Fit', () => { st.diagZoom = null; render(); }, 'plain', 'Fit the diagram to the width'));
-        const W = 1700, Hh = 620;
+        const W = 1700, Hh = 620;   // declared before the toolbox: its zoom readout calls diagZoomNow()
+        const grouped = new Set(BLOCK_GROUPS.flatMap(g => g[1]));
+        const groups = BLOCK_GROUPS.map(([g, ts]) => [g, ts.filter(t => D.BLOCK_TYPES[t])])
+            .concat([['Other', Object.keys(D.BLOCK_TYPES).filter(t => !grouped.has(t))]]).filter(g => g[1].length);
+        const palette = h('div', { class: 'mb-2 space-y-1.5' },
+            h('div', { class: 'flex flex-wrap items-center gap-x-4 gap-y-1.5 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50', role: 'group', 'aria-label': 'Block toolbox' },
+                groups.map(([g, ts]) => h('div', { class: 'flex items-center gap-1', role: 'group', 'aria-label': g + ' blocks' },
+                    h('span', { class: 'text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1' }, g),
+                    ts.map(t => blockButton(t, addBlock))))),
+            h('div', { class: 'flex flex-wrap items-center gap-1.5' },
+                ibtn('fa-circle-check', 'Validate', validateDiagram, 'primary', 'Check that every input is wired, there is exactly one Vf and one Vb output, and there are no algebraic loops.'),
+                ibtn('fa-wand-magic-sparkles', 'PID template', () => { if (confirm('Replace the diagram with the cascaded PID template?')) { st.design.diagram = D.diagramPID(); st.diagSel = null; save(); render(); } }, 'plain', 'Replace the diagram with the cascaded PID template.'),
+                ibtn('fa-eraser', 'Clear', () => { if (confirm('Remove all blocks?')) { st.design.diagram = blankDiagram(); st.diagSel = null; save(); render(); } }, 'danger', 'Remove every block except the rotor mixer and the two motor outputs.'),
+                h('span', { class: 'mx-1 h-5 border-l border-slate-300 dark:border-slate-600', 'aria-hidden': 'true' }),
+                ibtn('fa-file-export', 'Export', () => download('diagram.json', JSON.stringify(st.design.diagram, null, 1)), 'plain', 'Save the diagram as a JSON file.'),
+                ibtn('fa-file-import', 'Import', () => pickFile(txt => { try { st.design.diagram = JSON.parse(txt); save(); render(); } catch (e) { message('Not a diagram file: ' + e.message, 'err'); } }), 'plain', 'Load a diagram from a JSON file.'),
+                h('span', { class: 'mx-1 h-5 border-l border-slate-300 dark:border-slate-600', 'aria-hidden': 'true' }),
+                ibtn('fa-magnifying-glass-minus', '', () => { st.diagZoom = Math.max(0.3, diagZoomNow() - 0.1); render(); }, 'plain', 'Zoom out'),
+                h('span', { class: 'text-xs font-mono text-slate-500 w-10 text-center' }, st.diagZoom == null ? 'fit' : Math.round(st.diagZoom * 100) + '%'),
+                ibtn('fa-magnifying-glass-plus', '', () => { st.diagZoom = Math.min(1.5, diagZoomNow() + 0.1); render(); }, 'plain', 'Zoom in'),
+                ibtn('fa-expand', 'Fit', () => { st.diagZoom = null; render(); }, 'plain', 'Fit the diagram to the available width.')));
         function diagZoomNow() {
             if (st.diagZoom != null) return st.diagZoom;
+            const cur = document.getElementById('studio-diagram');   // in fit mode the browser sizes the svg: read what it chose
+            if (cur && cur.isConnected && cur.clientWidth) return cur.clientWidth / W;
             const avail = (body.clientWidth - 40) * (window.innerWidth > 1100 ? 0.75 : 1);
             return Math.min(1.5, Math.max(0.3, avail / W));
         }
         const zoom = diagZoomNow();
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`);
-        svg.setAttribute('width', W * zoom); svg.setAttribute('height', Hh * zoom);
+        // Fit mode is done by CSS (width 100%, height from the viewBox aspect ratio), so the canvas always fills its box,
+        // even when the studio's layout is still settling on the first open (Tailwind CDN writes its CSS asynchronously).
+        if (st.diagZoom == null) svg.setAttribute('style', `display:block;width:100%;height:auto;aspect-ratio:${W}/${Hh}`);
+        else { svg.setAttribute('width', W * zoom); svg.setAttribute('height', Hh * zoom); }
         svg.setAttribute('class', 'bg-[radial-gradient(circle,#e2e8f0_1px,transparent_1px)] [background-size:20px_20px] select-none');
         svg.id = 'studio-diagram'; svg.setAttribute('role', 'group'); svg.setAttribute('aria-label', 'Block diagram editor. Tab to a block to select or move it.');
         const NS = 'http://www.w3.org/2000/svg';
@@ -320,7 +513,7 @@
             svg.append(path, hit);
         });
         // blocks
-        const colorOf = { source: '#2a78d6', const: '#2a78d6', output: '#1baf7a', mixer: '#1baf7a', integrator: '#4a3aa7', derivative: '#4a3aa7', saturation: '#eb6834', wrap: '#eb6834' };
+        const colorOf = BLOCK_COLOR;
         for (const b of dg.blocks) {
             const g = el('g', { transform: `translate(${b.x},${b.y})`, style: 'cursor:move', tabindex: 0, role: 'button', 'data-block': b.id,
                                 'aria-pressed': st.diagSel && st.diagSel.block === b.id ? 'true' : 'false',
@@ -353,7 +546,7 @@
             if (b.type === 'mixer') ['V_s', 'V_d'].forEach((n, i) => { const t = el('text', { x: b.x + 8, y: portY(b, i, 2) + 4, 'font-size': 10, fill: '#475569' }); t.textContent = n; svg.append(t); });
         }
         svg.addEventListener('mousedown', (e) => { if (e.target === svg) { st.diagSel = null; render(); } });
-        const canvasWrap = h('div', { class: 'overflow-auto border rounded-lg border-slate-200 dark:border-slate-700 h-[56vh] bg-slate-50' }, svg);
+        const canvasWrap = h('div', { class: 'overflow-auto border rounded-lg border-slate-200 dark:border-slate-700 h-[56vh] bg-slate-50', style: 'scrollbar-gutter:stable' }, svg);
         body.append(palette, h('div', { class: 'grid grid-cols-4 gap-3' }, h('div', { class: 'col-span-3' }, canvasWrap,
             h('div', { class: 'text-xs text-slate-500 mt-1' }, 'Drag blocks to move them. Drag from an output port (filled) to an input port (open) to connect. Click a block or wire to select it; Delete removes it. Keyboard: Tab to a block, Enter selects it, arrow keys move it (Shift for larger steps), and the inspector connects its inputs. Integrators break feedback loops. Units: rad, rad/s, volts.')),
             renderBlockInspector()));
@@ -917,7 +1110,7 @@
         const quick = ['Diagnose my latest run against the specifications.', 'Which single change would most likely fix the failing specification? Test it first.', 'Explain why the pitch angle behaves like this during the travel step.'];
         body.append(h('div', { class: 'grid grid-cols-3 gap-3' }, settings,
             h('div', { class: 'col-span-2' }, card('Conversation · ' + (run ? run.label : 'no run yet') + (ai.grounded ? ' · simulator-grounded' : ' · not grounded'), msgs,
-                h('div', { class: 'flex flex-wrap gap-1.5 mt-2' }, quick.map(q => btn(q.length > 48 ? q.slice(0, 46) + '…' : q, () => askTutor(q)))),
+                h('div', { class: 'flex flex-wrap gap-1.5 mt-2' }, quick.map(q => btn(q.length > 48 ? q.slice(0, 46) + '…' : q, () => askTutor(q), 'plain', q.length > 48 ? q : 'Ask the tutor this question.'))),
                 h('div', { class: 'flex gap-2 mt-2' }, ta, h('div', { class: 'flex flex-col gap-1' },
                     btn(ai.busy ? '…' : 'Send', () => askTutor(ta.value), 'primary'))),
                 h('div', { class: 'text-[11px] text-slate-500 mt-1' }, 'AI answers can be wrong. Check every claim against the plots and the specification table.')))));
